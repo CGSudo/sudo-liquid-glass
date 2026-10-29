@@ -113,12 +113,21 @@ function decodeName(name) {
 const isOurs = (l) => l.name.startsWith(TAG) || l.name.startsWith(UNDER) || l.name === BOX;
 // Plain pixel layers crash Photoshop when read as a glass outline: only shapes (and text/smart objects) are sources.
 const isRaster = (l) => l.kind === constants.LayerKind.NORMAL || l.kind === "pixel";
+const isText = (l) => l.kind === constants.LayerKind.TEXT || l.kind === "text";
+
+// Photoshop's layer collections aren't real arrays (concat/spread on them throw "Cannot convert a Symbol value
+// to a string"): copy by index before using array-only operations.
+function list(layers) {
+  const out = [];
+  for (let i = 0; i < layers.length; i++) out.push(layers[i]);
+  return out;
+}
 
 function glassParts(group) {
   if (!group || !group.layers) return null;
   const box = group.layers.find((l) => l.name === BOX && l.layers);
   // Glass from 0.5 and earlier keeps its engine layers directly in the group; they move into the box on next render.
-  const pool = box ? box.layers.concat(group.layers) : group.layers;
+  const pool = box ? list(box.layers).concat(list(group.layers)) : group.layers;
   const render = pool.find((l) => l.name.startsWith(TAG));
   const under = pool.find((l) => l.name.startsWith(UNDER));
   const sources = group.layers.filter((l) => !isOurs(l) && !l.layers && !isRaster(l));
@@ -189,12 +198,25 @@ async function readVectorMask(doc, layer, region) {
 }
 
 // Shape mask of one source layer: vector path → own pixels → transparency selection. null = nothing here.
+// Exact letter outlines of a text layer: make a work path from the text and read it. Runs inside the peek
+// suspension, which is rolled back, so the work path never stays in the document and the text stays editable.
+async function readTextMask(doc, layer, region) {
+  await action.batchPlay([
+    { _obj: "select", _target: [{ _ref: "layer", _id: layer.id }], makeVisible: false },
+    { _obj: "make", _target: [{ _ref: "path", _property: "workPath" }], from: { _ref: "textLayer", _enum: "ordinal", _value: "targetEnum" } },
+  ], {});
+  const [r] = await action.batchPlay([{ _obj: "get", _target: [{ _ref: "path", _property: "workPath" }] }], {});
+  const comps = r && r.pathContents && r.pathContents.pathComponents;
+  const stream = pathStream(comps, layer.boundsNoEffects || layer.bounds, doc.resolution, region);
+  return stream && engine.fill(stream, region.right - region.left, region.bottom - region.top);
+}
+
 async function readShapeMask(doc, layer, region) {
   let mask = null;
   try {
-    mask = await readVectorMask(doc, layer, region);
+    mask = isText(layer) ? await readTextMask(doc, layer, region) : await readVectorMask(doc, layer, region);
   } catch (e) {
-    at("vector path not readable, using pixels: " + describe(e));
+    at("vector outline not readable, using pixels: " + describe(e));
   }
   if (!mask) {
     try {
@@ -234,6 +256,36 @@ function setLocked(layer, on) {
     if (layer.allLocked !== on) layer.allLocked = on;
   } catch (e) {
     at("lock not supported here: " + describe(e)); // older Photoshop: the folder just stays unlocked
+  }
+}
+
+// Small picture of the render for the panel: backdrop, then shadow, then glass, scaled to ≤ 320 px wide, as JPEG.
+const PREVIEW_W = 320;
+function previewPixels(backdrop, out, w, h) {
+  const s = Math.max(1, w / PREVIEW_W, h / 200);
+  const tw = Math.max(1, Math.floor(w / s)), th = Math.max(1, Math.floor(h / s));
+  const rgb = new Uint8Array(tw * th * 3);
+  for (let y = 0; y < th; y++) {
+    for (let x = 0; x < tw; x++) {
+      const i = (Math.floor(y * s) * w + Math.floor(x * s)) * 4, o = (y * tw + x) * 3;
+      const ua = out.under[i + 3] / 255, ga = out.glass[i + 3] / 255;
+      for (let c = 0; c < 3; c++) {
+        const v = backdrop[i + c] * (1 - ua) + out.under[i + c] * ua;
+        rgb[o + c] = v * (1 - ga) + out.glass[i + c] * ga;
+      }
+    }
+  }
+  return { rgb, tw, th };
+}
+async function showPreview(backdrop, out, w, h) {
+  const { rgb, tw, th } = previewPixels(backdrop, out, w, h);
+  const img = await imaging.createImageDataFromBuffer(rgb, { width: tw, height: th, components: 3, chunky: true, colorSpace: "RGB" });
+  try {
+    const b64 = await imaging.encodeImageData({ imageData: img, base64: true });
+    $("preview").setAttribute("src", "data:image/jpeg;base64," + b64);
+    $("previewBox").style.display = "block";
+  } finally {
+    img.dispose();
   }
 }
 
@@ -281,6 +333,15 @@ async function renderGlass(ctx, doc, g) {
   const all = new Uint8Array(masks.length * w * h);
   masks.forEach((mk, i) => all.set(mk, i * w * h));
   const out = engine.render(new Float32Array(p), backdrop, all, w, h);
+  // Panel preview shows the selected glass (or, with nothing selected, the last one rendered).
+  const sel = doc.activeLayers.length && glassOf(doc.activeLayers[0]);
+  if (!sel || sel.group.id === g.group.id) {
+    try {
+      await showPreview(backdrop, out, w, h);
+    } catch (e) {
+      at("preview skipped: " + describe(e)); // cosmetic: never block the render
+    }
+  }
   const opts = { width: w, height: h, components: 4, chunky: true, colorSpace: "RGB" };
   const glassImg = await imaging.createImageDataFromBuffer(out.glass, opts);
   const underImg = await imaging.createImageDataFromBuffer(out.under, opts);
@@ -369,14 +430,14 @@ function poll() {
 // Selected layers become one glass; selected layers plus an existing glass are added to that glass.
 function makeGlass() {
   const doc = app.activeDocument;
-  if (!doc || !doc.activeLayers.length) return status("Select one or more shape layers first.");
+  if (!doc || !doc.activeLayers.length) return status("Select one or more shape or text layers first.");
   if (doc.mode !== constants.DocumentMode.RGB) return status("Liquid Glass needs an RGB document.");
   const target = doc.activeLayers.map(glassOf).find(Boolean);
   const shapes = doc.activeLayers.filter((l) => !glassOf(l) && !l.layers && !l.isBackgroundLayer);
-  if (!shapes.length) return status(target ? "Also select the shapes to add to this glass." : "Pick shape layers (not the background or groups).");
+  if (!shapes.length) return status(target ? "Also select the shapes to add to this glass." : "Pick shape or text layers (not the background or groups).");
   const raster = shapes.filter(isRaster);
   if (raster.length) {
-    const msg = `"${raster[0].name}" is a pixel (raster) layer. Liquid Glass needs a shape layer: draw one with a Shape tool or the Pen tool in Shape mode.`;
+    const msg = `"${raster[0].name}" is a pixel (raster) layer. Liquid Glass needs a shape or text layer: draw one with a Shape tool, the Pen tool in Shape mode, or the Type tool.`;
     status(msg);
     return void core.showAlert({ message: msg });
   }
@@ -669,6 +730,7 @@ function buildUI() {
   $("make").addEventListener("click", makeGlass);
   $("refresh").addEventListener("click", () => run("Update Liquid Glass"));
   explain($("refresh"), "Refresh", "Re-renders every glass now. Use it after painting with a brush, which Photoshop doesn't report.");
+  explain($("previewBox"), "Preview", "A small live picture of the selected glass, so you can see changes even when it is off-screen.");
   explain($("liveBox"), "Live updates", "When on, the glass redraws by itself whenever you change anything in the document.");
   buildBrand();
   showParams();

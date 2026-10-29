@@ -2,22 +2,44 @@
   "manifestVersion": 5,
   "id": "com.liquidglass.photoshop",
   "name": "Sudo Liquid Glass",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "main": "index.html",
-  "host": { "app": "PS", "minVersion": "24.2.0" },
+  "host": {
+    "app": "PS",
+    "minVersion": "24.2.0"
+  },
   "entrypoints": [
     {
       "type": "panel",
       "id": "glassPanel",
-      "label": { "default": "Sudo Liquid Glass" },
-      "minimumSize": { "width": 240, "height": 360 },
-      "maximumSize": { "width": 600, "height": 2000 },
-      "preferredDockedSize": { "width": 280, "height": 640 },
-      "preferredFloatingSize": { "width": 280, "height": 640 }
+      "label": {
+        "default": "Sudo Liquid Glass"
+      },
+      "minimumSize": {
+        "width": 260,
+        "height": 420
+      },
+      "maximumSize": {
+        "width": 600,
+        "height": 2000
+      },
+      "preferredDockedSize": {
+        "width": 300,
+        "height": 720
+      },
+      "preferredFloatingSize": {
+        "width": 300,
+        "height": 720
+      }
     }
   ],
   "requiredPermissions": {
     "localFileSystem": "plugin",
-    "launchProcess": { "schemes": ["https"], "extensions": [] }
+    "launchProcess": {
+      "schemes": [
+        "https"
+      ],
+      "extensions": []
+    }
   }
 }

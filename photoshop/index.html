@@ -41,6 +41,9 @@
       background-color: rgba(127, 127, 127, 0.1); border-left: 2px solid rgba(127, 127, 127, 0.3);
     }
     .status.tip { border-left-color: #2fae7c; }
+    .preview { position: relative; margin-top: 6px; border-radius: 7px; overflow: hidden; background-color: rgba(127, 127, 127, 0.1); }
+    .preview img { display: block; max-width: 100%; max-height: 130px; margin: 0 auto; }
+    .ptag { position: absolute; left: 6px; top: 4px; padding: 1px 5px; border-radius: 3px; font-size: 9px; color: #fff; background-color: rgba(0, 0, 0, 0.5); }
 
     .tabs { display: flex; padding: 2px; border-radius: 6px; background-color: rgba(127, 127, 127, 0.14); }
     .tab { flex: 1; text-align: center; padding: 4px 0; border-radius: 4px; cursor: pointer; opacity: 0.65; }
@@ -98,6 +101,7 @@
       <span class="grow"></span>
       <label id="liveBox"><input type="checkbox" id="live" checked> Live updates</label>
     </div>
+    <div class="preview" id="previewBox" style="display: none"><img id="preview" alt=""><span class="ptag">Preview</span></div>
     <div class="status" id="status">Select shape layers, then click Make Glass. Hover any setting to see what it does.</div>
     <div class="tabs" id="tabs"></div>
   </div>
