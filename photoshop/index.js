@@ -29,34 +29,38 @@ const TABS = ["Glass", "Light", "Shadow", "Finish"];
 const SECTIONS = [
   { tab: 0, title: "Look", items: [{ presets: true }] },
   { tab: 0, title: "Lens", items: [
-    [2, "Lens strength", 0, 200, 1, "How strongly the edge bends what's behind"],
-    [3, "Edge thickness", 1, 300, 1, "Width of the curved rim, px"],
-    [6, "Edge curve", 0, 100, 1, "0 = sharp rim, 100 = soft dome"],
-    [4, "Rainbow edge", 0, 100, 1, "Colour fringing where light bends"],
-    [5, "Blur", 0, 60, 0.5, "Frosting of the background, px"],
+    [2, "Lens strength", 0, 200, 1, "How much the glass bends the picture behind it, like a magnifying lens. 0 = flat window."],
+    [3, "Edge width", 1, 300, 1, "How wide the curved rim of the glass is, in pixels. Wider = thicker, rounder glass."],
+    [6, "Edge softness", 0, 100, 1, "Low = a crisp, sharp rim. High = a soft, bubble-like rim."],
+    [4, "Rainbow", 0, 100, 1, "A thin rainbow where light bends at the edge, like real glass or a prism."],
+    [5, "Frost", 0, 60, 0.5, "Blurs what's behind the glass, like frosted glass. 0 = crystal clear."],
   ] },
   { tab: 0, title: "Liquid merge", items: [
-    [20, "Merge distance", 0, 200, 1, "Shapes closer than this flow together, px"],
+    [20, "Merge", 0, 200, 1, "Shapes closer than this many pixels melt together like drops of liquid."],
   ] },
   { tab: 1, title: "Light", items: [
-    { dial: ANGLE, label: "Direction", help: "Where the light comes from" },
-    [1, "Intensity", 0, 1, 0.01, "Brightness of the edge highlights"],
+    { dial: ANGLE, label: "Direction", help: "Where the light comes from. Drag the dial; 0° is the top." },
+    [1, "Shine", 0, 1, 0.01, "How bright the shiny highlights on the edge are."],
   ] },
   { tab: 1, title: "Colour", items: [
-    [7, "Brightness", -1, 1, 0.01, "Darker ↔ lighter glass"],
-    [8, "Vividness", 0, 2, 0.01, "Saturation of what's seen through"],
-    { tint: true },
-    [12, "Tint strength", 0, 1, 0.01, "How much of the tint colour"],
+    [7, "Brightness", -1, 1, 0.01, "Makes the glass darker (left) or lighter (right)."],
+    [8, "Vividness", 0, 2, 0.01, "How colourful things look through the glass. 1 = unchanged."],
+    { tint: true, help: "Colours the glass, like tinted sunglasses. Type a hex colour such as #3388ff." },
+    [12, "Tint amount", 0, 1, 0.01, "How strongly the tint colour shows. 0 = no tint."],
   ] },
   { tab: 2, title: "Drop shadow", items: [
-    [13, "Opacity", 0, 1, 0.01, ""], [14, "Softness", 0, 100, 1, "px"], [15, "Distance", -50, 50, 1, "px, downwards"],
+    [13, "Darkness", 0, 1, 0.01, "How dark the shadow under the glass is. 0 = no shadow."],
+    [14, "Softness", 0, 100, 1, "How blurry the shadow's edge is, in pixels."],
+    [15, "Drop", -50, 50, 1, "How far the shadow falls below the glass, in pixels."],
   ] },
-  { tab: 2, title: "Dim background", toggle: DIM, on: 0.3, items: [
-    [18, "Intensity", 0, 1, 0.01, "Darkens what's behind the glass"], [19, "Halo reach", 0, 200, 1, "Soft dimming past the edge, px"],
+  { tab: 2, title: "Dim background", toggle: DIM, on: 0.3, help: "Darkens what's behind and around the glass so it stands out on busy images.", items: [
+    [18, "Amount", 0, 1, 0.01, "How much the background behind the glass is darkened."],
+    [19, "Spread", 0, 200, 1, "How far the darkening reaches outside the glass, in pixels."],
   ] },
-  { tab: 3, title: "Film grain", toggle: GRAIN, on: 0.25, items: [
-    { formats: true },
-    [16, "Intensity", 0, 1, 0.01, ""], [17, "Grain size", 0.5, 12, 0.1, "px (set by the format, fine-tune here)"],
+  { tab: 3, title: "Film grain", toggle: GRAIN, on: 0.25, help: "Adds a fine film-photo texture to the glass.", items: [
+    { formats: true, help: "Pick a film size. Smaller film (Super 8) = bigger, rougher grain; large format = very fine grain." },
+    [16, "Amount", 0, 1, 0.01, "How visible the grain is."],
+    [17, "Size", 0.5, 12, 0.1, "Size of each grain speck, in pixels. Set by the film format; fine-tune here."],
   ] },
   { tab: 3, title: "Edge effects", items: [{ effects: true }] },
 ];
@@ -67,7 +71,12 @@ const TAG = "◆glass", UNDER = "◆shadow";
 const BOX = "◆ glass render (automatic)";
 
 const $ = (id) => document.getElementById(id);
-const status = (s) => ($("status").textContent = s);
+// While the pointer is over a setting the status bar shows its explanation; real status waits in lastStatus.
+let lastStatus = "", hovering = false;
+const status = (s) => {
+  lastStatus = s;
+  if (!hovering) $("status").textContent = s;
+};
 let engine, engineError = "";
 let params = DEFAULTS.slice();
 let busy = false, queued = null, timer = null;
@@ -452,8 +461,8 @@ function showParams() {
         $("n" + it[0]).value = fmt(params[it[0]]);
       } else if (it.dial !== undefined) {
         const a = (params[it.dial] * Math.PI) / 180;
-        $("knob").style.left = 20 + 16 * Math.sin(a) + "px";
-        $("knob").style.top = 20 - 16 * Math.cos(a) + "px";
+        $("knob").style.left = 10 + 9 * Math.sin(a) + "px"; // 28 px dial, 6 px knob
+        $("knob").style.top = 10 - 9 * Math.cos(a) + "px";
         $("n" + it.dial).value = fmt(params[it.dial]);
       }
     }
@@ -504,34 +513,47 @@ function numberBox(i, min, max) {
   return n;
 }
 
+// Hovering a setting explains it in plain words in the status bar (and as a tooltip); leaving restores the status.
+function explain(el, title, help) {
+  if (!help) return;
+  el.setAttribute("title", help);
+  el.addEventListener("mouseenter", () => {
+    hovering = true;
+    $("status").textContent = `${title}: ${help}`;
+    $("status").className = "status tip";
+  });
+  el.addEventListener("mouseleave", () => {
+    hovering = false;
+    $("status").textContent = lastStatus;
+    $("status").className = "status";
+  });
+}
+
+// One compact line: label, then its controls.
+function row(label, help, ...controls) {
+  const r = document.createElement("div");
+  r.className = "param";
+  const l = document.createElement("span");
+  l.className = "label";
+  l.textContent = label;
+  r.appendChild(l);
+  for (const c of controls) r.appendChild(c);
+  explain(r, label, help);
+  return r;
+}
+
 function sliderRow([i, label, min, max, stepSize, help]) {
-  const row = document.createElement("div");
-  row.className = "param";
-  const head = document.createElement("div");
-  head.className = "head";
-  head.innerHTML = `<span>${label}</span>`;
-  head.appendChild(numberBox(i, min, max));
-  const r = document.createElement("input");
-  for (const [k, v] of [["type", "range"], ["id", "p" + i], ["min", min], ["max", max], ["step", stepSize]]) r.setAttribute(k, String(v));
-  r.addEventListener("input", () => setParam(i, Number(r.value)));
-  row.appendChild(head);
-  row.appendChild(r);
-  if (help) {
-    const hint = document.createElement("div");
-    hint.className = "help";
-    hint.textContent = help;
-    row.appendChild(hint);
-  }
-  return row;
+  const s = document.createElement("input");
+  for (const [k, v] of [["type", "range"], ["id", "p" + i], ["min", min], ["max", max], ["step", stepSize]]) s.setAttribute(k, String(v));
+  s.className = "slider";
+  s.addEventListener("input", () => setParam(i, Number(s.value)));
+  return row(label, help, s, numberBox(i, min, max));
 }
 
 function dialRow({ dial, label, help }) {
-  const row = document.createElement("div");
-  row.className = "param dialrow";
-  row.innerHTML = `<div id="dial" class="dial"><div id="knob" class="knob"></div></div>
-    <div class="dialtext"><div class="head"><span>${label}</span></div><div class="help">${help} (0° = top, drag the dial)</div></div>`;
-  row.querySelector(".head").appendChild(numberBox(dial, -180, 180));
-  const dialEl = row.querySelector("#dial");
+  const dialEl = document.createElement("div");
+  dialEl.className = "dial";
+  dialEl.innerHTML = `<div id="knob" class="knob"></div>`;
   const angleAt = (e) => {
     const r = dialEl.getBoundingClientRect();
     return Math.round((Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))) * 180) / Math.PI);
@@ -540,28 +562,29 @@ function dialRow({ dial, label, help }) {
   dialEl.addEventListener("mousedown", (e) => { dragging = true; setParam(dial, angleAt(e)); });
   document.addEventListener("mousemove", (e) => dragging && setParam(dial, angleAt(e)));
   document.addEventListener("mouseup", () => (dragging = false));
-  return row;
+  const gap = document.createElement("span");
+  gap.className = "grow";
+  return row(label, help, dialEl, gap, numberBox(dial, -180, 180));
 }
 
-function tintRow() {
-  const row = document.createElement("div");
-  row.className = "param head";
-  row.innerHTML = `<span>Tint colour</span><span class="tintbox"><span id="swatch" class="swatch"></span><input id="tint" type="text" value="#ffffff"></span>`;
-  row.querySelector("#tint").addEventListener("change", (e) => {
+function tintRow({ help }) {
+  const box = document.createElement("span");
+  box.className = "tintbox";
+  box.innerHTML = `<span id="swatch" class="swatch"></span><input id="tint" class="hex" type="text" value="#ffffff">`;
+  box.querySelector("#tint").addEventListener("change", (e) => {
     const m = /^#?([0-9a-f]{6})$/i.exec(e.target.value.trim());
     if (!m) return status("Tint must be a hex colour like #3388ff.");
     [9, 10, 11].forEach((idx, k) => (params[idx] = parseInt(m[1].slice(k * 2, k * 2 + 2), 16) / 255));
     showParams();
     applyParams();
   });
-  return row;
+  return row("Tint colour", help, box);
 }
 
-function formatsRow() {
-  const row = document.createElement("div");
-  row.className = "param head";
+function formatsRow({ help }) {
   const sel = document.createElement("select");
-  sel.innerHTML = `<option value="">Film format…</option>` + FORMATS.map(([n, mm]) => `<option value="${mm}">${n}</option>`).join("");
+  sel.className = "pick";
+  sel.innerHTML = `<option value="">Choose…</option>` + FORMATS.map(([n, mm]) => `<option value="${mm}">${n}</option>`).join("");
   sel.addEventListener("change", () => {
     const doc = app.activeDocument;
     if (!sel.value || !doc) return;
@@ -571,35 +594,34 @@ function formatsRow() {
     showParams();
     applyParams();
   });
-  row.innerHTML = "<span>Film format</span>";
-  row.appendChild(sel);
-  return row;
+  return row("Film size", help, sel);
 }
 
 function effectsRow() {
-  const row = document.createElement("div");
-  row.className = "param";
-  row.innerHTML = `<sp-button id="effects" variant="secondary">Strokes, glows & shadows…</sp-button>
-    <div class="help">Opens Photoshop's Layer Style on your shape: solid or gradient strokes, inner/outer glow,
-    extra drop shadows. Stack as many as you like; they follow the shape live.</div>`;
-  row.querySelector("#effects").addEventListener("click", editEffects);
-  return row;
+  const b = document.createElement("sp-button");
+  b.id = "effects";
+  b.setAttribute("variant", "secondary");
+  b.setAttribute("size", "s");
+  b.className = "wide";
+  b.textContent = "Add strokes, glows & shadows…";
+  b.addEventListener("click", editEffects);
+  explain(b, "Edge effects", "Opens Photoshop's Layer Style on your shape: outlines (solid or gradient), glows and extra shadows. They follow the shape as you edit it.");
+  return b;
 }
 
 function presetsRow() {
-  const row = document.createElement("div");
-  row.className = "row";
-  for (const k of Object.keys(PRESETS)) {
+  const btns = Object.keys(PRESETS).map((k) => {
     const b = document.createElement("sp-action-button");
+    b.setAttribute("size", "s");
     b.textContent = k[0].toUpperCase() + k.slice(1);
     b.addEventListener("click", () => {
       params = params.map((v, i) => (i < LOOK && i !== DEPTH ? PRESETS[k][i] : v));
       showParams();
       applyParams();
     });
-    row.appendChild(b);
-  }
-  return row;
+    return b;
+  });
+  return row("Style", "Regular: frosted glass like Apple's default. Clear: see-through glass with a light shadow.", ...btns);
 }
 
 function buildUI() {
@@ -624,7 +646,7 @@ function buildUI() {
     sec.className = "section";
     const head = document.createElement("div");
     head.className = "shead";
-    head.innerHTML = `<span class="dot"></span><span class="stitle">${s.title}</span>`;
+    head.innerHTML = `<span class="stitle">${s.title}</span>`;
     const body = document.createElement("div");
     if (s.toggle !== undefined) {
       body.id = "b" + s.toggle;
@@ -632,13 +654,13 @@ function buildUI() {
       const t = document.createElement("input");
       t.setAttribute("type", "checkbox");
       t.id = "t" + s.toggle;
-      t.title = "On / off";
       t.addEventListener("change", () => setParam(s.toggle, t.checked ? s.on : 0));
       head.appendChild(t);
+      explain(head, s.title, s.help + " Tick to turn on.");
     }
     for (const it of s.items) {
-      body.appendChild(Array.isArray(it) ? sliderRow(it) : it.dial !== undefined ? dialRow(it) : it.tint ? tintRow()
-        : it.formats ? formatsRow() : it.presets ? presetsRow() : effectsRow());
+      body.appendChild(Array.isArray(it) ? sliderRow(it) : it.dial !== undefined ? dialRow(it) : it.tint ? tintRow(it)
+        : it.formats ? formatsRow(it) : it.presets ? presetsRow() : effectsRow());
     }
     sec.appendChild(head);
     sec.appendChild(body);
@@ -646,6 +668,8 @@ function buildUI() {
   }
   $("make").addEventListener("click", makeGlass);
   $("refresh").addEventListener("click", () => run("Update Liquid Glass"));
+  explain($("refresh"), "Refresh", "Re-renders every glass now. Use it after painting with a brush, which Photoshop doesn't report.");
+  explain($("liveBox"), "Live updates", "When on, the glass redraws by itself whenever you change anything in the document.");
   buildBrand();
   showParams();
 }
@@ -675,15 +699,13 @@ function buildBrand() {
   $("infoBtn").addEventListener("click", () => about($("about").style.display === "none"));
   $("credit").addEventListener("click", () => about(true));
   $("back").addEventListener("click", () => about(false));
-  for (const key of Object.keys(LINKS)) {
-    const el = $(key);
-    if (!LINKS[key]) {
-      el.style.display = "none";
-      continue;
-    }
-    // Opens in the user's browser; Photoshop asks once for permission (manifest: launchProcess https).
-    el.addEventListener("click", () => require("uxp").shell.openExternal(LINKS[key]).catch((e) => status("Couldn't open the link: " + describe(e))));
-  }
+  // Opens in the user's browser; Photoshop asks once for permission (manifest: launchProcess https).
+  const open = (url) => require("uxp").shell.openExternal(url).catch((e) => status("Couldn't open the link: " + describe(e)));
+  for (const key of Object.keys(LINKS)) $(key).addEventListener("click", () => open(LINKS[key]));
+  $("brandLink").addEventListener("click", () => open(LINKS.linkedin));
+  explain($("brandLink"), "CGSudo", "Click to visit the maker on LinkedIn.");
+  explain($("infoBtn"), "About", "About Sudo Liquid Glass, updates and help.");
+  lastStatus = $("status").textContent;
 }
 
 buildUI();
