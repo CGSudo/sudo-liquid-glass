@@ -24,7 +24,7 @@ pub struct Params {
     pub depth: f32,
     /// Chromatic fringing on the bent edge, 0..100.
     pub dispersion: f32,
-    /// Backdrop blur radius in px.
+    /// Backdrop blur radius in px (0 = clear glass).
     pub frost: f32,
     /// How far the bend spreads toward the middle, 0..100.
     pub splay: f32,
@@ -68,7 +68,7 @@ impl Default for Params {
             refraction: 80.0,
             depth: 16.0,
             dispersion: 20.0,
-            frost: 4.0,
+            frost: 12.0,
             splay: 30.0,
             brightness: 0.06,
             saturation: 1.2,
@@ -128,8 +128,9 @@ pub fn render(p: &Params, backdrop: &[u8], masks: &[u8], w: usize, h: usize, out
             planes[c][i] = backdrop[i * 4 + c] as f32 / 255.0;
         }
     }
+    // `frost` is the blur radius in px: three box passes approximate a Gaussian over everything behind the glass.
     if p.frost >= 0.5 {
-        let r = (p.frost / 2.0).round().max(1.0) as usize;
+        let r = p.frost.round().max(1.0) as usize;
         std::thread::scope(|s| {
             if threads() > 1 {
                 for pl in planes.iter_mut() {
@@ -830,5 +831,16 @@ mod tests {
         render(&Params { refraction: 150.0, ior: 1.0, ..neutral() }, &bd, &m, w, h, &mut out, None);
         let rim = (32 * w + 10) * 4; // inside the rim, where glass bends the most
         assert_eq!(&out[rim..rim + 3], &bd[rim..rim + 3]);
+    }
+
+    #[test]
+    fn blur_softens_everything_under_the_glass() {
+        let (w, h) = (96, 96);
+        let (bd, m) = (stripes(w, h), disk(w, h, 48.0, 48.0, 40.0));
+        let mut out = vec![0u8; w * h * 4];
+        render(&Params { frost: 8.0, ..neutral() }, &bd, &m, w, h, &mut out, None);
+        // Neighbouring-pixel contrast across the middle of the glass, against the same row of the raw backdrop.
+        let contrast = |img: &[u8]| (30..66).map(|x| (img[(48 * w + x) * 4] as i32 - img[(48 * w + x + 1) * 4] as i32).abs()).sum::<i32>();
+        assert!(contrast(&out) * 4 < contrast(&bd), "centre not blurred: {} vs {}", contrast(&out), contrast(&bd));
     }
 }

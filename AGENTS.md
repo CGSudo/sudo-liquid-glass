@@ -44,7 +44,7 @@ package.json             dev tooling only: `npm install` (jsdom), then `npm test
 | 2 | refraction ("Lens strength") | 80 | 15 | shadow_offset_y (px) | 8 |
 | 3 | depth ("Edge width", px) | 16 | 16 | grain (0 = off) | 0 |
 | 4 | dispersion ("Dispersion", rainbow) | 20 | 17 | grain_size (px) | 1.5 |
-| 5 | frost (blur, px) | 4 | 18 | dim (0 = off) | 0 |
+| 5 | frost ("Blur", radius px) | 12 | 18 | dim (0 = off) | 0 |
 | 6 | splay ("Edge softness") | 30 | 19 | dim_spread (px) | 40 |
 | 7 | brightness | 0.06 | 20 | merge (px) | 24 |
 | 8 | saturation ("Vividness") | 1.2 | 21 | bevel ("Emboss", advanced) | 0.32 |

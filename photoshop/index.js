@@ -13,7 +13,7 @@ const { loadEngine } = require("./engine.js");
 const { pathStream } = require("./paths.js");
 
 // Order = glass_core::Params.
-const DEFAULTS = [-45, 0.6, 80, 16, 20, 4, 30, 0.06, 1.2, 1, 1, 1, 0, 0.25, 24, 8, 0, 1.5, 0, 40, 24, 0.32, 1.2, 1.5, 1];
+const DEFAULTS = [-45, 0.6, 80, 16, 20, 12, 30, 0.06, 1.2, 1, 1, 1, 0, 0.25, 24, 8, 0, 1.5, 0, 40, 24, 0.32, 1.2, 1.5, 1];
 const LOOK = 16; // presets set the first 16 (the look) and keep depth, grain, dim and merge
 const ANGLE = 0, DEPTH = 3, GRAIN = 16, GRAIN_SIZE = 17, DIM = 18;
 const PRESETS = {
@@ -29,11 +29,11 @@ const TABS = ["Glass", "Light", "Shadow", "Finish"];
 const SECTIONS = [
   { tab: 0, title: "Look", items: [{ presets: true }] },
   { tab: 0, title: "Lens", items: [
+    [5, "Blur", 0, 200, 1, "Blurs everything behind the glass, like frosted glass, in pixels. 0 = crystal clear."],
     [2, "Lens strength", 0, 200, 1, "How much the glass bends the picture behind it, like a magnifying lens. 0 = flat window."],
     [3, "Edge width", 1, 300, 1, "How wide the curved rim of the glass is, in pixels. Wider = thicker, rounder glass."],
     [6, "Edge softness", 0, 100, 1, "Low = a crisp, sharp rim. High = a soft, bubble-like rim."],
     [4, "Dispersion", 0, 100, 1, "Light dispersion: splits light into a thin rainbow where the edge bends it, like a prism."],
-    [5, "Frost", 0, 60, 0.5, "Blurs what's behind the glass, like frosted glass. 0 = crystal clear."],
   ] },
   { tab: 0, title: "Liquid merge", items: [
     [20, "Merge", 0, 200, 1, "Shapes closer than this many pixels melt together like drops of liquid."],
@@ -294,7 +294,8 @@ function regionOf(doc, bs, p) {
     left: Math.min(...bs.map((x) => x.left)), top: Math.min(...bs.map((x) => x.top)),
     right: Math.max(...bs.map((x) => x.right)), bottom: Math.max(...bs.map((x) => x.bottom)),
   };
-  const m = Math.ceil(Math.max(p[3], p[14] * 1.5 + Math.abs(p[15]), p[18] > 0 ? p[19] * 1.5 : 0, p[20])) + 4;
+  // The blur reaches p[5] px, so read that much extra backdrop: content just outside the shape blurs in too.
+  const m = Math.ceil(Math.max(p[3], p[14] * 1.5 + Math.abs(p[15]), p[18] > 0 ? p[19] * 1.5 : 0, p[20]) + p[5] * 2) + 4;
   return {
     left: Math.max(0, Math.floor(b.left - m)), top: Math.max(0, Math.floor(b.top - m)),
     right: Math.min(doc.width, Math.ceil(b.right + m)), bottom: Math.min(doc.height, Math.ceil(b.bottom + m)),
@@ -464,6 +465,8 @@ function makeGlass() {
       // Edge thickness scales with the shapes (a quarter of the smallest short side), so big layers get a strong lens too.
       const short = Math.min(...shapes.map((s) => Math.min(s.bounds.right - s.bounds.left, s.bounds.bottom - s.bounds.top)));
       params[DEPTH] = Math.round(Math.min(200, Math.max(8, 0.25 * short)));
+      // Blur scales the same way, so big glass is as frosted as small glass (unless Clear style turned it off).
+      if (params[5] > 0) params[5] = Math.round(Math.min(200, Math.max(8, 0.06 * short)));
       showParams();
       at("create glass layers");
       const make = (name) => (doc.createPixelLayer ? doc.createPixelLayer({ name }) : doc.createLayer({ name }));
