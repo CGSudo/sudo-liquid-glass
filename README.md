@@ -6,7 +6,9 @@
 - No merging or flattening layers.
 - It updates live when you move or edit anything.
 
-![Sudo Liquid Glass: Apple-style liquid glass effect in Photoshop](preview.png)
+![Sudo Liquid Glass engine render on a synthetic test pattern](preview.png)
+
+*Engine test render on a synthetic test pattern, not a Photoshop screenshot. Real Photoshop screenshots and a demo video are coming.*
 
 **Download:** [latest release (SudoLiquidGlass.ccx)](../../releases/latest) · Photoshop 2023 (v24.2) or newer · Windows and macOS (Intel and Apple Silicon)
 
