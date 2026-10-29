@@ -1,0 +1,6 @@
+/target/
+/dist/
+# Illustrator versions are kept out of this repo for now.
+/illustrator/
+/illustrator-native/
+/preview/src/bin/lgcli.rs

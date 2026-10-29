@@ -1,0 +1,9 @@
+[package]
+name = "glass_core"
+version = "0.1.0"
+edition = "2021"
+description = "Liquid Glass renderer shared by the Photoshop and Illustrator hosts"
+
+[lib]
+# rlib: preview tool; cdylib: wasm + native dylib; staticlib: linked into the C++ hybrid addon / Illustrator plugin
+crate-type = ["rlib", "cdylib", "staticlib"]

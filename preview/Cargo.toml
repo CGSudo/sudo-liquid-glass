@@ -1,0 +1,10 @@
+[package]
+name = "preview"
+version = "0.1.0"
+edition = "2021"
+publish = false
+default-run = "preview"
+
+[dependencies]
+glass_core = { path = "../core" }
+png = "0.17"
