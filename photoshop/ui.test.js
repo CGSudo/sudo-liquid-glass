@@ -34,7 +34,7 @@ const click = (el) => el.dispatchEvent(new win.Event("click"));
 // Panel and brand.
 assert.deepStrictEqual([...win.document.querySelectorAll("#tabs .tab")].map((t) => t.textContent), ["Glass", "Light", "Shadow", "Finish"]);
 assert(win.document.querySelector("#mark img"), "logo shown");
-assert.strictEqual($("footVersion").textContent, "v0.6.1");
+assert.strictEqual($("footVersion").textContent, "v0.7.0");
 assert.strictEqual([...win.document.querySelectorAll(".param")].filter((r) => !r.title).length, 0, "every setting explains itself");
 click($("brandLink"));
 click($("infoBtn"));
@@ -52,11 +52,31 @@ const advBody = adv.children[1];
 assert.strictEqual(advBody.style.display, "none", "Advanced starts closed");
 click(adv.children[0]);
 assert.strictEqual(advBody.style.display, "block");
-for (const i of [21, 22, 23, 24]) assert($("p" + i) && $("n" + i), "advanced control " + i);
+for (const i of [21, 22, 23, 24, 25, 26, 31, 32, 33, 35]) assert($("p" + i) && $("n" + i), "control " + i);
+for (const i of [30, 34]) assert($("s" + i), "select " + i);
+assert($("t13") && $("t31"), "shadow and stroke toggles");
+assert.strictEqual($("p33").parentNode.style.display, "none", "gradient-only rows hidden for a solid stroke");
 assert.strictEqual($("n23").value, "1.5");
+
+// Looks: nine built-in cards plus "Save look", four to a page; the quick sliders sit above the tabs.
+const cards = () => [...$("strip").children];
+assert.strictEqual(cards().length, 10);
+assert.strictEqual(cards().filter((c) => c.style.display !== "none").length, 4, "one page of four");
+assert($("quick").querySelector("#p5") && $("quick").querySelector("#p3"), "quick sliders above the tabs");
+win.T("params[3] = 77");
+click(cards()[2]); // Frosted
+assert.strictEqual(win.T("params[5]"), 24, "look applied");
+assert.strictEqual(win.T("params[3]"), 77, "looks keep the edge width");
+assert(cards()[2].className.includes(" on"), "applied look is marked");
+click($("next"));
+assert.strictEqual(cards()[4].style.display, "flex", "next page shows the fifth card");
+$("saveName").value = "Mine";
+click($("saveOk"));
+assert.strictEqual(cards().length, 11, "saved look added");
+assert.strictEqual(cards()[9].getAttribute("data-name"), "Mine");
 // A glass saved by 0.5.x (21 values) loads with the new settings at their defaults.
 const old21 = win.T("decodeName(\"◆glass[-45,0.6,80,16,20,4,30,0.06,1.2,1,1,1,0,0.25,24,8,0,1.5,0,40,24]\")");
-assert.strictEqual(JSON.stringify(old21.slice(21)), "[0.32,1.2,1.5,1]");
+assert.strictEqual(JSON.stringify(old21.slice(21)), "[0.32,1.2,1.5,1,0,12,1,1,1,0,0,1,0.2,0,-45,1,1,1,1,1,1]");
 // Photoshop layer collections throw on symbol keys other than the iterator (that broke concat in 0.5.3).
 const PSList = (arr) => new Proxy(arr, { get(o, k) { if (typeof k === "symbol" && k !== Symbol.iterator) throw new TypeError("Cannot convert a Symbol value to a string"); return o[k]; } });
 assert.throws(() => [].concat(PSList([1])), /Symbol/, "fake reproduces the Photoshop failure");

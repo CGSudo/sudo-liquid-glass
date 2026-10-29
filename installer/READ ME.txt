@@ -1,16 +1,24 @@
-Sudo Liquid Glass for Photoshop - live, real Liquid Glass from your shape and text layers.
+Sudo Liquid Glass - live, real Liquid Glass for Photoshop and Illustrator.
 
-INSTALL (pick one)
+PHOTOSHOP (Windows and Mac) - pick one
   1. Double-click SudoLiquidGlass.ccx. Creative Cloud installs it.
-  2. Windows: double-click "Install on Windows.bat".
-     Mac: double-click "Install on Mac.command". If macOS says it can't be opened,
+  2. Windows: double-click "Install Photoshop on Windows.bat".
+     Mac: double-click "Install Photoshop on Mac.command". If macOS says it can't be opened,
      right-click it > Open > Open (it is a small script, not signed by Apple).
+  Then restart Photoshop and open Plugins > Sudo Liquid Glass.
+  Needs Photoshop 2023 (v24.2) or newer and the Creative Cloud desktop app.
 
-Then restart Photoshop and open Plugins > Sudo Liquid Glass.
-Needs Photoshop 2023 (v24.2) or newer and the Creative Cloud desktop app.
+ILLUSTRATOR (Windows only for now)
+  1. Close Illustrator.
+  2. Double-click "Install Illustrator on Windows.bat" and allow it to make changes
+     (it copies LiquidGlass.aip into Illustrator's Plug-ins folder).
+  3. Start Illustrator, select a shape and choose Effect > Stylize > Liquid Glass...
+     Change it later: double-click Liquid Glass in the Appearance panel, or Object > Edit Liquid Glass...
+  Needs Illustrator 2026 on Windows 10 or 11 (with the Microsoft Edge WebView2 Runtime, built into Windows 11).
+  There is no Mac Illustrator version yet.
 
 Why .ccx and not .zxp? ZXP is the format of Adobe's older CEP extensions.
-This is a modern UXP plugin; Adobe packages those as .ccx.
+The Photoshop plugin is a modern UXP plugin; Adobe packages those as .ccx.
 
 Help, updates and source: https://github.com/CGSudo/sudo-liquid-glass
 Made by CGSudo - https://www.linkedin.com/in/cgsudo

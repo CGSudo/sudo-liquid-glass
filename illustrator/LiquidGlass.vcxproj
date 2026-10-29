@@ -1,0 +1,67 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- Liquid Glass Live Effect for Illustrator (Windows x64). Build with build.ps1; AISDK = the unzipped Illustrator SDK. -->
+<Project DefaultTargets="Build" ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <AISDK Condition="'$(AISDK)'==''">E:\AI\SDK\AI_2026_SDK_Win\Adobe Illustrator 2026 SDK</AISDK>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{6A0C7F4E-2B1D-4C8E-9F3A-5D7E1B2C4A90}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)'==''">10.0.19041.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset Condition="'$(PlatformToolset)'==''">v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetName>LiquidGlass</TargetName>
+    <TargetExt>.aip</TargetExt>
+    <OutDir>$(ProjectDir)build\</OutDir>
+    <IntDir>$(ProjectDir)build\obj\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>Source;$(AISDK)\samplecode\common\includes;$(AISDK)\samplecode\common\win;$(AISDK)\illustratorapi\ate;$(AISDK)\illustratorapi\illustrator;$(AISDK)\illustratorapi\illustrator\actions;$(AISDK)\illustratorapi\pica_sp;$(AISDK)\illustratorapi\illustrator\legacy;$(WV2)\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;WIN_ENV;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <ForcedIncludeFiles>pragma.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <Optimization>MaxSpeed</Optimization>
+      <AdditionalOptions>/Zc:sizedDealloc- %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <ModuleDefinitionFile>$(AISDK)\samplecode\common\win\PluginMain.def</ModuleDefinitionFile>
+      <AdditionalDependencies>$(ProjectDir)..\target\release\glass_core.lib;comctl32.lib;ntdll.lib;userenv.lib;ws2_32.lib;dbghelp.lib;dwmapi.lib;shell32.lib;ole32.lib;$(WV2)\build\native\x64\WebView2LoaderStatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Source\LiquidGlassPlugin.cpp" />
+    <ClCompile Include="Source\LiquidGlassDialog.cpp" />
+    <ClCompile Include="Source\LiquidGlassSuites.cpp" />
+    <ClCompile Include="$(AISDK)\samplecode\common\source\AppContext.cpp" />
+    <ClCompile Include="$(AISDK)\samplecode\common\source\IllustratorSDK.cpp" />
+    <ClCompile Include="$(AISDK)\samplecode\common\source\Main.cpp" />
+    <ClCompile Include="$(AISDK)\samplecode\common\source\Plugin.cpp" />
+    <ClCompile Include="$(AISDK)\samplecode\common\source\Suites.cpp" />
+    <ClCompile Include="$(AISDK)\illustratorapi\illustrator\IAIUnicodeString.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="LiquidGlass.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

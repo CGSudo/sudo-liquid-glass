@@ -2,10 +2,11 @@
 
 Sudo Liquid Glass recreates Apple's Liquid Glass material inside Adobe apps. It is live and non-destructive: the glass reads what is behind it and re-renders, and it never merges or flattens layers.
 
-- **Today:** Photoshop only, a UXP plugin, at v0.6.1.
-- **Goal:** the same engine in **Illustrator, Premiere Pro and After Effects**. These are plans: none of them is released. Never describe them as available.
-- **Packaging:** `.ccx` (UXP). ZXP is for CEP extensions and doesn't apply.
-- **Platforms:** Windows and macOS. The engine is wasm and there is no platform-specific code, but it has been tested on Windows only.
+- **Today (v0.7.0):**
+  - **Photoshop:** a UXP plugin, Windows and macOS (wasm engine, no platform code; tested on Windows only).
+  - **Illustrator:** a native Live Effect (`.aip`), **Windows only**.
+- **Goal:** the same engine in **Premiere Pro and After Effects**, and Illustrator on Mac. These are plans: never describe them as available.
+- **Packaging:** Photoshop `.ccx` (UXP; ZXP is for CEP extensions and doesn't apply). Illustrator `.aip`, installed by `installer/Install Illustrator on Windows.bat`.
 
 **New here with zero context?** Read [docs/PROJECT_HISTORY.md](docs/PROJECT_HISTORY.md) first. It explains:
 - the mission and every decision;
@@ -24,17 +25,20 @@ photoshop/index.html     panel markup and CSS (compact, theme-aware, SUDO brand 
 photoshop/index.js       panel UI, glass detection, history-suspension reads, live poller, Make Glass, preview
 photoshop/engine.js      loads glass_core.wasm (or a native addon if one exists); render() and fill()
 photoshop/paths.js       Photoshop vector path (batchPlay pathComponents) → fill_paths stream
+photoshop/looks.js       SHARED with Illustrator: DEFAULTS, the built-in looks, pad()/applyLook()/lookOf(), line icons
 photoshop/logo.png       SUDO logo shown in the panel header and About page
 photoshop/*.test.js      engine.test.js / paths.test.js run the real wasm; ui.test.js loads the panel in jsdom
                          with a fake Photoshop (layer lists are Proxies that behave like Photoshop's)
 preview/src/main.rs      renders preview*.png from a synthetic backdrop (engine test renders, not screenshots)
-installer/               one-click install scripts shipped in the release zip (Windows .bat, Mac .command)
+illustrator/             native Live Effect: Source/*.cpp (render, notifier, menus, checks), ui/panel.html (settings
+                         window, WebView2), build.ps1, test/run_test.ps1 (settings window without Illustrator)
+installer/               one-click install scripts shipped in the release zip (Photoshop .bat/.command, Illustrator .bat)
 install.ps1 / install.sh package photoshop/ → dist/SudoLiquidGlass.ccx and install via Adobe UPIA (Windows / macOS)
 package.json             dev tooling only: `npm install` (jsdom), then `npm test` runs every test
 ```
 
 ## The one contract every host shares: `Params`
-`glass_core::Params` is `repr(C)`, 25 × f32, in this order. JS passes it as a `Float32Array`; C/C++ passes `const float*`.
+`glass_core::Params` is `repr(C)`, 42 × f32, in this order. JS passes it as a `Float32Array`; C/C++ passes `const float*`.
 - **Count check:** hosts check the count with `lg_param_count()`, and the wasm bridge throws on a mismatch.
 - **Units:** all lengths are in **pixels** at render time; hosts that work in points convert first.
 
@@ -52,15 +56,25 @@ package.json             dev tooling only: `npm install` (jsdom), then `npm test
 | 9 | tint r | 1 | 22 | rim_width ("Rim line", px, advanced) | 1.2 |
 | 10 | tint g | 1 | 23 | ior ("Glass type", advanced) | 1.5 |
 | 11 | tint b | 1 | 24 | sheen (advanced) | 1 |
-| 12 | tint amount | 0 | | | |
+| 12 | tint amount | 0 | 25 | inner_glow (0 = off) | 0 |
+| | | | 26 | inner_glow_size (px) | 12 |
+| | | | 27–29 | inner_glow_color r, g, b | 1, 1, 1 |
+| | | | 30 | inner_glow_blend (0 normal, 1 screen, 2 overlay, 3 soft light, 4 add, 5 multiply) | 0 |
+| | | | 31 | stroke_width (px, inside the edge, 0 = off) | 0 |
+| | | | 32–33 | stroke_opacity start, end | 1, 0.2 |
+| | | | 34 | stroke_type (0 solid, 1 linear gradient) | 0 |
+| | | | 35 | stroke_angle (deg, 0 = start colour at top) | -45 |
+| | | | 36–38 | stroke_color r, g, b (solid / gradient start) | 1, 1, 1 |
+| | | | 39–41 | stroke_color2 r, g, b (gradient end) | 1, 1, 1 |
 
 To add a parameter:
 1. Append it to the end of the list. Never reorder.
 2. `PARAM_COUNT` follows from the struct size, so leave it alone.
-3. Update `DEFAULTS` in `photoshop/index.js`.
-4. Update the `param_layout_matches_js` test and the param arrays in `photoshop/engine.test.js`.
+3. Update `DEFAULTS` in `photoshop/looks.js` (both apps read it).
+4. Update `kParamCount` in `illustrator/Source/LiquidGlassDialog.h`, `kDefaults` in `illustrator/Source/LiquidGlassPlugin.cpp` and `illustrator/test/dialog_test.cpp`, and `kLengths` if the new value is a length (pt → px).
+5. Update the `param_layout_matches_js` test and the param arrays in `photoshop/engine.test.js`.
 
-`decodeName` pads older saved glasses (16 or 21 values) with the defaults, so existing documents keep working.
+`decodeName` pads older saved glasses (16, 21, 25 or 30 values) with the defaults, so existing documents keep working.
 
 **Render call:** `lg_render(params, backdrop RGBA8, masks A8 × n, n, w, h, out RGBA8, under RGBA8 | null)`.
 - **Masks:** several masks fuse into one liquid body (smooth union, `merge` px).
@@ -125,17 +139,20 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -NoInstall
   1. Bump `version` in `photoshop/manifest.json` (no BOM).
   2. Run `npm test`.
   3. Package with `install.ps1 -NoInstall`.
-  4. Commit, then build the one-click zip. It holds the `.ccx` plus `installer/` (the Windows .bat, the Mac .command with its exec bit, and READ ME); `HEAD:installer` flattens the folder:
-     `git archive --format=zip --prefix=SudoLiquidGlass-<ver>/ --add-file=dist/SudoLiquidGlass.ccx -o dist/SudoLiquidGlass-<ver>-installer.zip HEAD:installer`
-  5. Push, then attach both files to a GitHub release.
+  4. Build the Illustrator plug-in: `powershell -ExecutionPolicy Bypass -File illustrator/build.ps1 -NoInstall`, and copy `illustrator/build/LiquidGlass.aip` to `dist/`.
+  5. Commit, then build the one-click zip. It holds the `.ccx`, the `.aip` and `installer/` (the .bat files, the Mac .command with its exec bit, and READ ME); `HEAD:installer` flattens the folder:
+     `git archive --format=zip --prefix=SudoLiquidGlass-<ver>/ --add-file=dist/SudoLiquidGlass.ccx --add-file=dist/LiquidGlass.aip -o dist/SudoLiquidGlass-<ver>-installer.zip HEAD:installer`
+  6. Push, then attach the `.ccx` and the installer zip to a GitHub release.
 - Be honest in public text: say "tested on Windows", and label engine renders as test renders, not Photoshop screenshots.
 
 ## Roadmap for other hosts (all reuse `lg_render`)
-- **Illustrator:** a C++ Live Effect built with the Illustrator SDK. It appears in the Appearance panel and re-runs when the shape changes. A prototype exists only on the owner's machine (not in this repo).
-  1. Rasterize the art below the shape (`srcArt`) and the shape itself.
-  2. Call `lg_render` (link `glass_core` as a staticlib).
-  3. Return the raster.
-  - Open issue: when the art *below* the glass changes, a notifier must force the effect to re-run.
+- **Illustrator (Windows, shipped):** see [illustrator/README.md](illustrator/README.md).
+  - Rasterizes the art below the shape (`srcArt`) and the shape, calls `lg_render` (glass_core as a staticlib), returns the rasters.
+  - A document-changed notifier re-runs a glass when the art below it changes (newest edit time + item count of that art).
+  - Settings window = `illustrator/ui/panel.html` in WebView2; `build.ps1` inlines `photoshop/looks.js` and the logo.
+  - Lengths are stored in **pt** and converted to px (2 px per pt, capped at 4 MP) at render: `kLengths` lists them.
+  - Tried and removed: a toolbar tool and Alt + double-click (did not work for the owner in Illustrator 2026).
+  - **Mac:** needs an Xcode build on a Mac, the Mac SDK and a WKWebView settings window. Not started.
 - **After Effects and Premiere Pro:** one effect plugin built with the After Effects SDK runs in both apps, because Premiere hosts AE effect plugins.
   - Backdrop: the layer's input.
   - Mask: the layer's alpha.

@@ -55,6 +55,26 @@ pub struct Params {
     pub ior: f32,
     /// Advanced: strength of the broad soft highlight across the curved rim, 0..2.
     pub sheen: f32,
+    /// Inner glow strength, 0 = off: a soft light just inside the edge.
+    pub inner_glow: f32,
+    /// How far the inner glow reaches inward, px.
+    pub inner_glow_size: f32,
+    /// Inner glow colour, RGB 0..1.
+    pub inner_glow_color: [f32; 3],
+    /// Inner glow blend mode: 0 normal, 1 screen, 2 overlay, 3 soft light, 4 add, 5 multiply.
+    pub inner_glow_blend: f32,
+    /// Stroke width inside the edge, px, 0 = off. Inside only, so the glass alpha stays exactly the shape.
+    pub stroke_width: f32,
+    /// Stroke opacity at the start and end of the gradient (solid strokes use the start).
+    pub stroke_opacity: [f32; 2],
+    /// Stroke fill: 0 solid colour, 1 linear gradient.
+    pub stroke_type: f32,
+    /// Gradient direction, degrees, 0 = start colour at the top (same convention as `light_angle`).
+    pub stroke_angle: f32,
+    /// Stroke start colour (the solid colour), RGB 0..1.
+    pub stroke_color: [f32; 3],
+    /// Stroke gradient end colour, RGB 0..1.
+    pub stroke_color2: [f32; 3],
 }
 
 pub const PARAM_COUNT: usize = std::mem::size_of::<Params>() / 4;
@@ -85,6 +105,16 @@ impl Default for Params {
             rim_width: 1.2,
             ior: 1.5,
             sheen: 1.0,
+            inner_glow: 0.0,
+            inner_glow_size: 12.0,
+            inner_glow_color: [1.0, 1.0, 1.0],
+            inner_glow_blend: 0.0,
+            stroke_width: 0.0,
+            stroke_opacity: [1.0, 0.2],
+            stroke_type: 0.0,
+            stroke_angle: -45.0,
+            stroke_color: [1.0, 1.0, 1.0],
+            stroke_color2: [1.0, 1.0, 1.0],
         }
     }
 }
@@ -158,10 +188,17 @@ pub fn render(p: &Params, backdrop: &[u8], masks: &[u8], w: usize, h: usize, out
 
     let th = std::f32::consts::PI / 180.0 * p.light_angle;
     let light = (th.sin(), -th.cos()); // screen space, y down
-    let strength = depth * (p.refraction / 100.0).max(0.0) * 4.0;
+    let strength = lens_reach(depth) * (p.refraction / 100.0).max(0.0) * 4.0;
     let disp_c = (p.dispersion / 100.0).clamp(0.0, 1.0) * 0.25;
     let separate = under.is_some();
-    let ctx = Ctx { p, w, h, depth, strength, disp_c, light, planes: &planes, dist: &dist, height: &height, shadow: &shadow, halo: &halo, mask, separate };
+    // Shape bounds, so a gradient stroke spans the shape rather than the whole canvas.
+    let (mut bx0, mut by0, mut bx1, mut by1) = (w, h, 0, 0);
+    for (i, _) in mask.iter().enumerate().filter(|(_, &m)| m > 0) {
+        let (x, y) = (i % w, i / w);
+        (bx0, by0, bx1, by1) = (bx0.min(x), by0.min(y), bx1.max(x), by1.max(y));
+    }
+    let bounds = [bx0 as f32, by0 as f32, bx1 as f32, by1 as f32];
+    let ctx = Ctx { p, w, h, depth, strength, disp_c, light, planes: &planes, dist: &dist, height: &height, shadow: &shadow, halo: &halo, mask, separate, bounds };
 
     par_rows(out, w * 4, h, |y, row| ctx.shade_row(y, row));
     if let Some(u) = under {
@@ -188,6 +225,25 @@ struct Ctx<'a> {
     halo: &'a [f32],
     mask: &'a [u8],
     separate: bool,
+    bounds: [f32; 4],
+}
+
+/// How far the lens reaches, px, for an edge `depth` px wide: grows 1:1 up to 24 px, then a quarter as fast, so
+/// wide edges stay round without pulling the picture from far outside the glass (which reads as haze).
+pub fn lens_reach(depth: f32) -> f32 {
+    depth.min(24.0) + (depth - 24.0).max(0.0) * 0.25
+}
+
+/// One channel of `top` blended onto `base` (Photoshop-style modes), 0..1.
+fn blend(mode: f32, base: f32, top: f32) -> f32 {
+    match mode.round() as i32 {
+        1 => 1.0 - (1.0 - base) * (1.0 - top),
+        2 => if base < 0.5 { 2.0 * base * top } else { 1.0 - 2.0 * (1.0 - base) * (1.0 - top) },
+        3 => (1.0 - 2.0 * top) * base * base + 2.0 * top * base,
+        4 => (base + top).min(1.0),
+        5 => base * top,
+        _ => top,
+    }
 }
 
 impl Ctx<'_> {
@@ -255,7 +311,8 @@ impl Ctx<'_> {
             let face = -(gx * self.light.0 + gy * self.light.1); // outward normal · light
             let (lit, back) = (face.max(0.0).powf(1.5), (-face).max(0.0).powf(1.5));
             let edge = (-d / p.rim_width.max(0.1)).exp();
-            let sheen = (1.0 - t) * (1.0 - t) * slope.min(1.0);
+            // Fades past ~24 px in, so a wide edge doesn't wash the whole glass out with shine.
+            let sheen = (1.0 - t) * (1.0 - t) * slope.min(1.0) * (-(d / 24.0)).exp().max(0.15);
             let spec = p.light_intensity * (edge * (0.5 + 0.9 * lit + 0.6 * back) + p.sheen * sheen * (0.6 * lit + 0.25 * back));
             let spec = spec.clamp(0.0, 1.0);
             for v in c.iter_mut() {
@@ -270,6 +327,14 @@ impl Ctx<'_> {
                 *v += bevel;
             }
 
+            // Inner glow: the edge colour fades inward, like light caught inside the glass.
+            if p.inner_glow > 0.0 {
+                let gl = p.inner_glow.min(1.0) * (-d / p.inner_glow_size.max(0.5)).exp();
+                for j in 0..3 {
+                    c[j] += (blend(p.inner_glow_blend, c[j], p.inner_glow_color[j]) - c[j]) * gl;
+                }
+            }
+
             // Film grain: monochrome (one value for all three channels, never per-channel colour noise), two
             // octaves of clumps, strongest in the midtones like silver halide; fixed to the glass so it never flickers.
             if p.grain > 0.0 {
@@ -282,6 +347,26 @@ impl Ctx<'_> {
                 let g = g.min((1.0 - hi).max(0.0)).max(-lo.max(0.0));
                 for v in c.iter_mut() {
                     *v += g;
+                }
+            }
+
+            // Stroke: a band just inside the edge, solid or a linear gradient across the shape's bounds.
+            if p.stroke_width > 0.0 {
+                let band = (p.stroke_width - d).clamp(0.0, 1.0);
+                let mut t = 0.0;
+                if p.stroke_type >= 0.5 {
+                    let [x0, y0, x1, y1] = self.bounds;
+                    let a = std::f32::consts::PI / 180.0 * p.stroke_angle;
+                    let (dx, dy) = (a.sin(), -a.cos());
+                    let reach = ((x1 - x0) * 0.5 * dx).abs() + ((y1 - y0) * 0.5 * dy).abs();
+                    let s = ((x as f32 - (x0 + x1) * 0.5) * dx + (y as f32 - (y0 + y1) * 0.5) * dy) / reach.max(1.0);
+                    t = (0.5 - 0.5 * s).clamp(0.0, 1.0); // start colour where the angle points
+                }
+                let op = p.stroke_opacity[0] + (p.stroke_opacity[1] - p.stroke_opacity[0]) * t;
+                let k = band * op.clamp(0.0, 1.0);
+                for j in 0..3 {
+                    let sc = p.stroke_color[j] + (p.stroke_color2[j] - p.stroke_color[j]) * t;
+                    c[j] += (sc - c[j]) * k;
                 }
             }
 
@@ -720,7 +805,7 @@ mod tests {
 
     #[test]
     fn param_layout_matches_js() {
-        assert_eq!(PARAM_COUNT, 25);
+        assert_eq!(PARAM_COUNT, 42);
     }
 
     #[test]
@@ -842,5 +927,53 @@ mod tests {
         // Neighbouring-pixel contrast across the middle of the glass, against the same row of the raw backdrop.
         let contrast = |img: &[u8]| (30..66).map(|x| (img[(48 * w + x) * 4] as i32 - img[(48 * w + x + 1) * 4] as i32).abs()).sum::<i32>();
         assert!(contrast(&out) * 4 < contrast(&bd), "centre not blurred: {} vs {}", contrast(&out), contrast(&bd));
+    }
+
+    #[test]
+    fn inner_glow_colours_the_edge_not_the_centre() {
+        let (w, h) = (96, 96);
+        let bd: Vec<u8> = (0..w * h).flat_map(|_| [0, 0, 0, 255]).collect();
+        let m = disk(w, h, 48.0, 48.0, 40.0);
+        let mut out = vec![0u8; w * h * 4];
+        let glow = Params { inner_glow: 1.0, inner_glow_size: 4.0, inner_glow_color: [1.0, 0.0, 0.0], ..neutral() };
+        render(&glow, &bd, &m, w, h, &mut out, None);
+        let (edge, centre) = ((48 * w + 9) * 4, (48 * w + 48) * 4);
+        assert!(out[edge] > 150 && out[edge + 1] < 30, "edge not red: {:?}", &out[edge..edge + 4]);
+        assert!(out[centre] < 5, "centre glows: {:?}", &out[centre..centre + 4]);
+    }
+
+    #[test]
+    fn wide_edges_keep_the_lens_close() {
+        assert_eq!(lens_reach(16.0), 16.0);
+        assert_eq!(lens_reach(100.0), 43.0);
+    }
+
+    #[test]
+    fn glow_blend_screen_never_darkens() {
+        let (w, h) = (96, 96);
+        let bd: Vec<u8> = (0..w * h).flat_map(|_| [200, 120, 40, 255]).collect();
+        let m = disk(w, h, 48.0, 48.0, 40.0);
+        let mut out = vec![0u8; w * h * 4];
+        let glow = Params { inner_glow: 1.0, inner_glow_size: 4.0, inner_glow_color: [0.2, 0.2, 0.2], inner_glow_blend: 1.0, ..neutral() };
+        render(&glow, &bd, &m, w, h, &mut out, None);
+        let edge = (48 * w + 9) * 4;
+        assert!((0..3).all(|j| out[edge + j] >= bd[edge + j]), "screen darkened: {:?}", &out[edge..edge + 4]);
+    }
+
+    #[test]
+    fn stroke_paints_inside_edge_with_gradient() {
+        let (w, h) = (96, 96);
+        let bd: Vec<u8> = (0..w * h).flat_map(|_| [0, 0, 0, 255]).collect();
+        let m = disk(w, h, 48.0, 48.0, 40.0);
+        let mut out = vec![0u8; w * h * 4];
+        // Red at the top fading to blue at the bottom, 3 px wide.
+        let s = Params { stroke_width: 3.0, stroke_type: 1.0, stroke_angle: 0.0, stroke_opacity: [1.0, 1.0],
+            stroke_color: [1.0, 0.0, 0.0], stroke_color2: [0.0, 0.0, 1.0], ..neutral() };
+        render(&s, &bd, &m, w, h, &mut out, None);
+        let (top, bottom, centre) = ((10 * w + 48) * 4, (86 * w + 48) * 4, (48 * w + 48) * 4);
+        assert!(out[top] > 200 && out[top + 2] < 50, "top not red: {:?}", &out[top..top + 4]);
+        assert!(out[bottom + 2] > 200 && out[bottom] < 50, "bottom not blue: {:?}", &out[bottom..bottom + 4]);
+        assert!(out[centre] < 5 && out[centre + 2] < 5, "stroke inside the glass: {:?}", &out[centre..centre + 4]);
+        assert_eq!(out[(48 * w + 5) * 4 + 3], 0, "nothing outside the shape");
     }
 }

@@ -1,0 +1,611 @@
+<!doctype html>
+<!-- Sudo Liquid Glass settings panel for Illustrator. Hosted in WebView2 by LiquidGlassDialog.cpp, which calls
+     init() and receives chrome.webview.postMessage strings: "params:<csv>", "preview-off:<csv>", "ok:<csv>", "cancel",
+     "refresh:<csv>", "presets:<json>", "link:<url>". Opened in a normal browser it runs in demo mode. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sudo Liquid Glass</title>
+<style>
+  :root {
+    --bg: #1b1d1c; --panel: #242726; --raise: #2e3230; --line: rgba(255, 255, 255, 0.07); --field: #171918;
+    --text: #e9efec; --dim: #9aa6a0; --faint: #6c7671;
+    --brand: #0d4431; --accent: #2fae7c; --accent-hi: #45c891;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 12px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; overflow: hidden; }
+  /* Every block has a fixed height except the settings list, which scrolls: nothing jumps while you work. */
+  body { display: flex; flex-direction: column; }
+  header, .presets, .quick, nav, .help, footer { flex: none; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  svg.i { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.35;
+    stroke-linecap: round; stroke-linejoin: round; }
+
+  header { display: flex; align-items: center; gap: 10px; height: 58px; padding: 0 14px;
+    background: radial-gradient(120% 140% at 0% 0%, #17694c 0%, var(--brand) 55%, #08281d 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  header img { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
+  .title { font-size: 14px; font-weight: 650; letter-spacing: 0.2px; }
+  .by { color: #b7e6d1; font-size: 11px; cursor: pointer; }
+  .by:hover { color: #fff; text-decoration: underline; }
+  .ver { margin-left: auto; font-size: 10px; color: #a6d9c2; background: rgba(0, 0, 0, 0.25); padding: 2px 7px; border-radius: 99px; }
+
+  h2 { margin: 0; font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.9px; color: var(--dim);
+    display: flex; align-items: center; gap: 6px; }
+  .presets { position: relative; padding: 10px 14px 0; }
+  .label-row { display: flex; align-items: center; justify-content: space-between; height: 20px; margin-bottom: 6px; }
+  .link { background: none; border: 0; color: var(--accent); font-size: 11px; padding: 0; display: flex; align-items: center; gap: 4px; }
+  .link:hover { color: var(--accent-hi); }
+  .looks { display: flex; align-items: center; gap: 4px; height: 82px; }
+  .strip { flex: 1; min-width: 0; display: flex; gap: 8px; overflow: hidden; padding: 1px; }
+  .pg { flex: none; width: 22px; height: 76px; border: 0; border-radius: 8px; background: none; color: var(--dim);
+    display: flex; align-items: center; justify-content: center; }
+  .pg:hover:not(:disabled) { background: var(--raise); color: var(--text); }
+  .pg:disabled { opacity: 0.2; cursor: default; }
+  .dots { display: flex; justify-content: center; gap: 5px; height: 8px; margin-top: 2px; }
+  .dots b { width: 5px; height: 5px; border-radius: 50%; background: #3c4240; cursor: pointer; }
+  .dots b.on { background: var(--accent); }
+  .card { position: relative; flex: none; width: 72px; height: 76px; border: 1px solid var(--line); background: var(--panel);
+    border-radius: 10px; padding: 5px 5px 0; text-align: center; transition: border-color 0.15s, background 0.15s; }
+  .card:hover { border-color: rgba(47, 174, 124, 0.6); background: var(--raise); }
+  .card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .thumb { height: 44px; border-radius: 7px; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 22% 34%, #ff5f6d 0 17%, transparent 18%),
+      radial-gradient(circle at 78% 72%, #ffc371 0 21%, transparent 22%),
+      radial-gradient(circle at 62% 18%, #36d1dc 0 12%, transparent 13%),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 6px),
+      linear-gradient(135deg, #1e3c72, #5b2a86); }
+  .pane { position: absolute; inset: 8px 11px; border-radius: 9px; }
+  .card span { display: block; margin-top: 4px; font-size: 10.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.on span { color: var(--text); }
+  .card .x { position: absolute; top: 3px; right: 3px; width: 17px; height: 17px; border-radius: 50%; border: 0;
+    background: rgba(20, 20, 20, 0.75); color: #ffb3b3; font-size: 12px; line-height: 17px; padding: 0; visibility: hidden; }
+  .card:hover .x { visibility: visible; }
+  .card.add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    border-style: dashed; color: var(--dim); padding: 0; }
+  .card.add svg.i { width: 20px; height: 20px; }
+  .card.add span { margin: 0; }
+  /* The save box overlays the strip instead of pushing everything down. */
+  .save { position: absolute; left: 14px; right: 14px; top: 36px; height: 80px; display: none; flex-direction: column;
+    justify-content: center; gap: 8px; padding: 0 12px; background: var(--raise); border: 1px solid var(--accent); border-radius: 10px; }
+  .save.open { display: flex; }
+  .save div { display: flex; gap: 6px; }
+  .save small { color: var(--dim); }
+
+  .quick { margin: 2px 14px 0; padding: 4px 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 11px; }
+  nav { display: flex; gap: 2px; height: 36px; margin: 8px 14px 0; padding: 3px; background: var(--panel); border-radius: 9px; }
+  nav button { flex: 1; border: 0; background: none; border-radius: 7px; color: var(--dim); font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 6px; }
+  nav button:hover { color: var(--text); }
+  nav button.on { background: var(--raise); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+
+  main { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 9px 8px 12px 14px;
+    scrollbar-width: thin; scrollbar-color: #3b403e transparent; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; padding: 8px 11px 6px; margin-bottom: 8px; }
+  section > .head { display: flex; align-items: center; gap: 8px; height: 22px; margin-bottom: 4px; }
+  section > .head h2 { flex: 1; }
+  section.off .body { opacity: 0.4; pointer-events: none; }
+  section.closed .body { display: none; }
+  section.closed > .head { margin-bottom: 0; }
+  .chev { border: 0; background: none; color: var(--dim); padding: 0 2px; transition: transform 0.15s; }
+  section.closed .chev { transform: rotate(-90deg); }
+
+  .row { display: flex; align-items: center; gap: 8px; height: 30px; }
+  .row label { width: 118px; flex: none; color: var(--dim); display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; }
+  .row label svg.i { color: var(--faint); }
+  .row:hover label, .row:hover label svg.i { color: var(--text); }
+  input[type=range] { flex: 1; min-width: 40px; height: 18px; margin: 0; background: none; -webkit-appearance: none; appearance: none; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent) var(--fill, 50%), #3c4240 var(--fill, 50%)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px;
+    border-radius: 50%; background: #f4f8f6; border: 0; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+  input[type=range]:hover::-webkit-slider-thumb { background: #fff; box-shadow: 0 0 0 4px rgba(47, 174, 124, 0.25); }
+  input.num, input.text { width: 52px; flex: none; background: var(--field); border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 3px 6px; font: inherit; text-align: right; }
+  input.hex { width: 74px; }
+  input.text { text-align: left; width: auto; flex: 1; }
+  input.num:focus, input.text:focus { outline: none; border-color: var(--accent); }
+  input[type=color] { width: 30px; height: 22px; flex: none; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+  input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+  input[type=color]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+  select { flex: 1; min-width: 0; background: var(--field); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
+  .switch { position: relative; width: 30px; height: 17px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch i { position: absolute; inset: 0; border-radius: 99px; background: #444a48; transition: background 0.15s; cursor: pointer; }
+  .switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { left: 15px; }
+  .dial { width: 28px; height: 28px; border-radius: 50%; background: var(--field); border: 1px solid var(--line); position: relative; cursor: grab; flex: none; }
+  .dial b { position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--accent-hi); }
+  .note { color: var(--dim); margin: 2px 0 4px; display: flex; gap: 8px; }
+
+  /* Two lines, always: longer help is cut, so the buttons below never move. */
+  .help { height: 46px; padding: 7px 14px; border-top: 1px solid var(--line); color: var(--dim); font-size: 11px; background: var(--field);
+    display: flex; gap: 8px; align-items: flex-start; }
+  .help span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .help svg.i { margin-top: 1px; color: var(--accent); }
+  footer { display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 14px; border-top: 1px solid var(--line); background: var(--panel); }
+  .btn { border: 1px solid var(--line); background: var(--raise); height: 30px; padding: 0 12px; border-radius: 8px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn:hover { border-color: rgba(255, 255, 255, 0.2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #062418; font-weight: 650; min-width: 72px; justify-content: center; }
+  .btn.primary:hover { background: var(--accent-hi); }
+  .grow { flex: 1; }
+  .check { display: flex; align-items: center; gap: 6px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <img id="logo" src="{{LOGO}}" alt="SUDO">
+  <div>
+    <div class="title">Sudo Liquid Glass</div>
+    <div class="by" id="by" data-help="Made by CGSudo. Click to open LinkedIn.">by CGSudo · LinkedIn ↗</div>
+  </div>
+  <span class="ver" id="ver">v0.7.0</span>
+</header>
+
+<div class="presets">
+  <div class="label-row">
+    <h2 data-icon="presets">Looks</h2>
+    <button class="link" id="reset" data-help="Back to the default Liquid Glass look.">Reset</button>
+  </div>
+  <div class="looks">
+    <button class="pg" id="prev" data-help="Previous looks."></button>
+    <div class="strip" id="strip"></div>
+    <button class="pg" id="next" data-help="More looks."></button>
+  </div>
+  <div class="dots" id="dots"></div>
+  <div class="save" id="save">
+    <small>Name your look. It's saved for every document.</small>
+    <div>
+      <input class="text" id="saveName" placeholder="e.g. Soft frost" maxlength="40">
+      <button class="btn primary" id="saveOk">Save</button>
+      <button class="btn" id="saveNo">Cancel</button>
+    </div>
+  </div>
+</div>
+<div class="quick" id="quick"></div>
+
+<nav id="tabs"></nav>
+<main id="params"></main>
+<div class="help"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.9v.1"/></svg><span id="help"></span></div>
+<footer>
+  <button class="btn" id="refresh" data-help="Re-reads the artwork behind the glass and redraws it now.">
+    <svg class="i" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>Refresh</button>
+  <label class="check" data-help="Show your changes on the artboard while you edit."><span class="switch"><input type="checkbox" id="preview" checked><i></i></span>Preview</label>
+  <span class="grow"></span>
+  <button class="btn" id="cancel">Cancel</button>
+  <button class="btn primary" id="ok">OK</button>
+</footer>
+
+<script src="../../photoshop/looks.js"></script>
+<script>
+"use strict";
+// Defaults, looks and icons are shared with Photoshop (photoshop/looks.js). Lengths are in points here.
+const { DEFAULTS, KEEP, LOOKS: BUILTIN, icon, pad, applyLook, lookOf } = window.SudoLooks;
+const DEPTH = 3, SHADOW = 13, GRAIN = 16, GRAIN_SIZE = 17, DIM = 18, MERGE = 20, GLOW = 25, STROKE = 31;
+const BLENDS = ["Normal", "Screen", "Overlay", "Soft light", "Add", "Multiply"];
+const FORMATS = [["Super 8", 5.79], ["16 mm", 10.26], ["35 mm (36×24)", 36], ["Medium format 6×6", 56], ["Large format 4×5", 120]];
+const GRAIN_MM = 0.018;
+const LINKEDIN = "https://www.linkedin.com/in/cgsudo";
+
+// Rows are [index, label, min, max, step, help, icon]; objects are special rows. Sections live in tabs.
+const TABS = [["Glass", "glass"], ["Light", "sun"], ["Shadow", "shadow"], ["Finish", "finish"]];
+// Always visible under the looks: the settings people change most, so any look can be fine-tuned at once.
+const QUICK = [
+  [5, "Frost", 0, 200, 1, "How frosted the glass is: blurs everything behind it. 0 = crystal clear.", "frost"],
+  [2, "Lens", 0, 200, 1, "How much the glass bends the picture behind it, like a magnifying lens. 0 = flat window.", "lens"],
+  [3, "Edge width", 1, 300, 1, "How wide the rounded rim is, in points. Wider = rounder glass, but a smaller clear middle.", "edge"],
+  [1, "Shine", 0, 1, 0.01, "How bright the shiny highlights on the edge are.", "sparkle"],
+];
+const SECTIONS = [
+  { tab: 0, title: "Lens", icon: "lens", items: [
+    [6, "Edge softness", 0, 100, 1, "Low = a crisp, sharp rim. High = a soft, bubble-like rim.", "soft"],
+    [4, "Dispersion", 0, 100, 1, "Splits light into a thin rainbow where the edge bends it, like a prism.", "prism"],
+  ] },
+  { tab: 0, title: "Liquid merge", icon: "merge", items: [
+    [20, "Merge", 0, 200, 1, "Shapes in a group closer than this many points melt together like drops of liquid.", "merge"],
+  ] },
+  { tab: 0, title: "Advanced", icon: "advanced", collapsed: true, help: "Fine control of the glass optics. Click to open or close.", items: [
+    [21, "Emboss", 0, 1, 0.01, "How raised the edge looks: the side facing the light gets brighter, the far side darker.", "emboss"],
+    [22, "Rim line", 0.2, 8, 0.1, "Width of the thin bright line that runs around the edge, in points.", "rim"],
+    [23, "Glass type", 1, 2.4, 0.01, "How strongly the material bends light: 1.0 = air (no bend), 1.5 = glass, 2.4 = diamond.", "diamond"],
+    [24, "Sheen", 0, 2, 0.01, "Soft, broad shine across the curved edge. 1 = default, 0 = none.", "sheen"],
+  ] },
+  { tab: 1, title: "Light", icon: "sun", items: [
+    { dial: 0, label: "Direction", icon: "direction", help: "Where the light comes from. Drag the dial; 0° is the top." },
+  ] },
+  { tab: 1, title: "Colour", icon: "palette", items: [
+    [7, "Brightness", -1, 1, 0.01, "Makes the glass darker (left) or lighter (right).", "bright"],
+    [8, "Vividness", 0, 2, 0.01, "How colourful things look through the glass. 1 = unchanged.", "drop"],
+    { color: [9, 10, 11], label: "Tint colour", icon: "palette", help: "Colours the glass, like tinted sunglasses." },
+    [12, "Tint amount", 0, 1, 0.01, "How strongly the tint colour shows. 0 = no tint.", "amount"],
+  ] },
+  { tab: 2, title: "Drop shadow", icon: "shadow", toggle: SHADOW, on: 0.25, help: "A soft shadow under the glass, so it seems to float.", items: [
+    [13, "Darkness", 0, 1, 0.01, "How dark the shadow under the glass is.", "amount"],
+    [14, "Softness", 0, 100, 1, "How blurry the shadow's edge is, in points.", "blur"],
+    [15, "Drop", -50, 50, 1, "How far the shadow falls below the glass, in points.", "down"],
+  ] },
+  { tab: 2, title: "Dim background", icon: "moon", toggle: DIM, on: 0.3, help: "Darkens what's behind and around the glass so it stands out on busy images.", items: [
+    [18, "Amount", 0, 1, 0.01, "How much the background behind the glass is darkened.", "amount"],
+    [19, "Spread", 0, 200, 1, "How far the darkening reaches outside the glass, in points.", "spread"],
+  ] },
+  { tab: 3, title: "Inner glow", icon: "glow", toggle: GLOW, on: 0.5, help: "A soft light just inside the edge, like light caught inside the glass.", items: [
+    [25, "Amount", 0, 1, 0.01, "How strong the glow is.", "amount"],
+    [26, "Size", 1, 100, 1, "How far the glow reaches in from the edge, in points.", "inward"],
+    { color: [27, 28, 29], label: "Colour", icon: "palette", help: "The colour of the glow." },
+    { select: 30, label: "Blend mode", icon: "blend", options: BLENDS, help: "How the glow mixes with the glass. Normal paints the colour; Screen and Add only brighten; Overlay and Soft light add contrast; Multiply darkens." },
+  ] },
+  { tab: 3, title: "Stroke", icon: "stroke", toggle: STROKE, on: 2, help: "A line just inside the edge of the glass, in one colour or a gradient.", items: [
+    [31, "Width", 0, 50, 0.5, "How thick the stroke is, in points. It sits just inside the edge.", "width"],
+    { select: 34, label: "Fill", icon: "fill", options: ["Solid colour", "Gradient"], help: "Solid: one colour. Gradient: blends from the colour to the end colour across the shape." },
+    { color: [36, 37, 38], label: "Colour", icon: "palette", help: "The stroke colour (where a gradient starts)." },
+    [32, "Opacity", 0, 1, 0.01, "How solid the stroke is (where a gradient starts).", "opacity"],
+    { color: [39, 40, 41], label: "End colour", icon: "gradient", help: "The colour the gradient blends to." },
+    [33, "End opacity", 0, 1, 0.01, "How solid the stroke is where the gradient ends. Low = a line that fades away.", "opacity"],
+    [35, "Angle", -180, 180, 1, "Which way the gradient runs. 0 puts the start colour at the top.", "angle"],
+  ] },
+  { tab: 3, title: "Film grain", icon: "grain", toggle: GRAIN, on: 0.25, help: "Adds a fine, black-and-white film-photo texture to the glass.", items: [
+    { formats: true, label: "Film size", icon: "film", help: "Pick a film size. Smaller film (Super 8) = bigger, rougher grain; large format = very fine grain." },
+    [16, "Amount", 0, 1, 0.01, "How visible the grain is.", "amount"],
+    [17, "Size", 0.25, 6, 0.05, "Size of each grain speck, in points. Set by the film size; fine-tune here.", "size"],
+  ] },
+  { tab: 3, title: "Edge effects", icon: "pen", items: [
+    { note: "Outside strokes, outer glows and shadows: add them in the Appearance panel, above Liquid Glass." },
+  ] },
+];
+const GRADIENT_ONLY = [33, 35, 39]; // rows shown only while the stroke fill is a gradient
+const IDLE_HELP = "Hover over any setting to see what it does.";
+
+const $ = (id) => document.getElementById(id);
+const host = window.chrome && window.chrome.webview;
+const send = (s) => host && host.postMessage(s);
+let params = DEFAULTS.slice(), userPresets = [], docWidth = 612, active = "Liquid Glass";
+const refresh = []; // functions that push params into the controls
+const sync = () => refresh.forEach((f) => f());
+
+const fmt = (v) => String(Math.round(v * 100) / 100);
+const hex = (rgb) => "#" + rgb.map((i) => Math.round(Math.min(1, Math.max(0, params[i])) * 255).toString(16).padStart(2, "0")).join("");
+let timer = 0;
+// Coalesced, so a slider drag sends one preview per frame instead of one per pixel.
+function changed() {
+  active = "";
+  markPreset();
+  clearTimeout(timer);
+  timer = setTimeout(() => $("preview").checked && send("params:" + params.join(",")), 60);
+}
+function set(i, v) {
+  params[i] = v;
+  sync();
+  changed();
+}
+
+function help(el, text) {
+  el.addEventListener("mouseenter", () => ($("help").textContent = text));
+  el.addEventListener("mouseleave", () => ($("help").textContent = IDLE_HELP));
+}
+
+function row(label, ico, text, ...controls) {
+  const r = document.createElement("div");
+  r.className = "row";
+  const l = document.createElement("label");
+  l.innerHTML = icon(ico);
+  l.append(label);
+  r.append(l, ...controls);
+  help(r, text);
+  return r;
+}
+
+const spacer = () => Object.assign(document.createElement("span"), { className: "grow" });
+
+function slider([i, label, min, max, step, text, ico]) {
+  const s = Object.assign(document.createElement("input"), { type: "range", min, max, step });
+  const n = Object.assign(document.createElement("input"), { className: "num", type: "text" });
+  s.addEventListener("input", () => set(i, +s.value));
+  n.addEventListener("change", () => {
+    const v = parseFloat(n.value);
+    if (Number.isFinite(v)) set(i, Math.min(max, Math.max(min, v)));
+    else n.value = fmt(params[i]);
+  });
+  refresh.push(() => {
+    s.value = params[i];
+    s.style.setProperty("--fill", ((Math.min(max, Math.max(min, params[i])) - min) / (max - min)) * 100 + "%");
+    if (document.activeElement !== n) n.value = fmt(params[i]);
+  });
+  return Object.assign(row(label, ico, text, s, n), { id: "row" + i });
+}
+
+function dial({ dial: i, label, icon: ico, help: text }) {
+  const d = document.createElement("div");
+  d.className = "dial";
+  const knob = document.createElement("b");
+  d.append(knob);
+  const n = Object.assign(document.createElement("input"), { className: "num", type: "text" });
+  const drag = (e) => {
+    const r = d.getBoundingClientRect();
+    set(i, Math.round((Math.atan2(e.clientX - r.left - r.width / 2, -(e.clientY - r.top - r.height / 2)) * 180) / Math.PI));
+  };
+  d.addEventListener("pointerdown", (e) => {
+    d.setPointerCapture(e.pointerId);
+    drag(e);
+    d.onpointermove = drag;
+  });
+  d.addEventListener("pointerup", () => (d.onpointermove = null));
+  n.addEventListener("change", () => {
+    const v = parseFloat(n.value);
+    if (Number.isFinite(v)) set(i, ((((v + 180) % 360) + 360) % 360) - 180);
+  });
+  refresh.push(() => {
+    const a = (params[i] * Math.PI) / 180;
+    knob.style.left = 14 + 9 * Math.sin(a) + "px";
+    knob.style.top = 14 - 9 * Math.cos(a) + "px";
+    if (document.activeElement !== n) n.value = fmt(params[i]);
+  });
+  return row(label, ico, text, d, spacer(), n);
+}
+
+function color({ color: rgb, label, icon: ico, help: text }) {
+  const c = Object.assign(document.createElement("input"), { type: "color" });
+  const n = Object.assign(document.createElement("input"), { className: "num hex", type: "text" });
+  const apply = (h) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h.trim());
+    if (!m) return void (n.value = hex(rgb));
+    rgb.forEach((idx, k) => (params[idx] = parseInt(m[1].slice(k * 2, k * 2 + 2), 16) / 255));
+    sync();
+    changed();
+  };
+  c.addEventListener("input", () => apply(c.value));
+  n.addEventListener("change", () => apply(n.value));
+  refresh.push(() => {
+    c.value = hex(rgb);
+    if (document.activeElement !== n) n.value = hex(rgb);
+  });
+  return Object.assign(row(label, ico, text, spacer(), c, n), { id: "row" + rgb[0] });
+}
+
+function choice({ select: i, label, icon: ico, options, help: text }) {
+  const s = document.createElement("select");
+  s.innerHTML = options.map((o, k) => `<option value="${k}">${o}</option>`).join("");
+  s.addEventListener("change", () => set(i, +s.value));
+  refresh.push(() => (s.value = String(Math.round(params[i]))));
+  return row(label, ico, text, s);
+}
+
+function formats({ label, icon: ico, help: text }) {
+  const s = document.createElement("select");
+  s.innerHTML = `<option value="">Choose a film size…</option>` + FORMATS.map(([n, mm]) => `<option value="${mm}">${n}</option>`).join("");
+  s.addEventListener("change", () => {
+    if (!s.value) return;
+    // The document width stands in for the frame width: smaller film = bigger grain.
+    params[GRAIN_SIZE] = Math.round(Math.min(6, Math.max(0.25, (docWidth / +s.value) * GRAIN_MM)) * 20) / 20;
+    if (params[GRAIN] <= 0) params[GRAIN] = 0.25;
+    sync();
+    changed();
+  });
+  return row(label, ico, text, s);
+}
+
+function build() {
+  for (const [k, [name, ico]] of TABS.entries()) {
+    const b = document.createElement("button");
+    b.innerHTML = icon(ico);
+    b.append(name);
+    b.addEventListener("click", () => showTab(k));
+    $("tabs").append(b);
+  }
+  for (const q of QUICK) $("quick").append(slider(q));
+  for (const s of SECTIONS) {
+    const sec = document.createElement("section");
+    sec.dataset.tab = s.tab;
+    const head = document.createElement("div");
+    head.className = "head";
+    const h = document.createElement("h2");
+    h.innerHTML = icon(s.icon);
+    h.append(s.title);
+    head.append(h);
+    if (s.help) help(head, s.help);
+    if (s.toggle !== undefined) {
+      const sw = document.createElement("label");
+      sw.className = "switch";
+      sw.innerHTML = `<input type="checkbox"><i></i>`;
+      const box = sw.querySelector("input");
+      box.addEventListener("change", () => set(s.toggle, box.checked ? s.on : 0));
+      refresh.push(() => {
+        box.checked = params[s.toggle] > 0;
+        sec.classList.toggle("off", !box.checked);
+      });
+      head.append(sw);
+    }
+    if (s.collapsed) {
+      sec.classList.add("closed");
+      head.append(Object.assign(document.createElement("button"), { className: "chev", textContent: "▾" }));
+      head.style.cursor = "pointer";
+      head.addEventListener("click", () => sec.classList.toggle("closed"));
+    }
+    const body = document.createElement("div");
+    body.className = "body";
+    for (const it of s.items) {
+      if (Array.isArray(it)) body.append(slider(it));
+      else if (it.dial !== undefined) body.append(dial(it));
+      else if (it.color) body.append(color(it));
+      else if (it.select !== undefined) body.append(choice(it));
+      else if (it.formats) body.append(formats(it));
+      else if (it.note) {
+        const p = document.createElement("p");
+        p.className = "note";
+        p.innerHTML = icon(s.icon);
+        p.append(it.note);
+        body.append(p);
+      }
+    }
+    sec.append(head, body);
+    $("params").append(sec);
+  }
+  refresh.push(() => GRADIENT_ONLY.forEach((i) => ($("row" + i).style.display = params[34] >= 0.5 ? "" : "none")));
+  for (const el of document.querySelectorAll("[data-icon]")) el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon));
+  for (const el of document.querySelectorAll("[data-help]")) help(el, el.dataset.help);
+  $("help").textContent = IDLE_HELP;
+  showTab(0);
+}
+
+function showTab(k) {
+  [...$("tabs").children].forEach((b, i) => b.classList.toggle("on", i === k));
+  for (const s of $("params").children) s.style.display = +s.dataset.tab === k ? "" : "none";
+  $("params").scrollTop = 0;
+}
+
+// A CSS stand-in for each look: blur, brightness, tint, rim, glow and stroke drawn over a colourful backdrop.
+function thumb(v) {
+  const t = document.createElement("div");
+  t.className = "thumb";
+  const p = document.createElement("div");
+  p.className = "pane";
+  p.style.backdropFilter = `blur(${Math.min(8, v[5] / 3)}px) brightness(${1 + v[7] * 0.9}) saturate(${v[8]})`;
+  const rgb = (a) => a.map((i) => Math.round(v[i] * 255)).join(",");
+  p.style.background = `rgba(${rgb([9, 10, 11])},${v[12] * 0.6})`;
+  p.style.boxShadow = [
+    `inset 0 0 0 ${Math.max(0.5, v[22] * 0.6)}px rgba(255,255,255,${0.35 + v[1] * 0.5})`,
+    `inset 0 ${2 + v[21] * 4}px ${3 + v[6] / 20}px rgba(255,255,255,${0.15 + v[21] * 0.6})`,
+    v[25] > 0 ? `inset 0 0 ${v[26] / 1.5}px rgba(${rgb([27, 28, 29])},${v[25]})` : "",
+    v[31] > 0 ? `inset 0 0 0 ${Math.min(3, v[31] / 2)}px rgba(${rgb([36, 37, 38])},${v[32]})` : "",
+    `0 ${v[15] / 4}px ${v[14] / 4}px rgba(0,0,0,${v[13]})`,
+  ].filter(Boolean).join(",");
+  if (v[16] > 0) p.style.backgroundImage = "radial-gradient(rgba(255,255,255,0.18) 0.6px, transparent 0.8px)", (p.style.backgroundSize = "3px 3px");
+  t.append(p);
+  return t;
+}
+
+function card(preset, user) {
+  const c = document.createElement("button");
+  c.className = "card";
+  c.dataset.name = preset.name;
+  const label = document.createElement("span");
+  label.textContent = preset.name;
+  c.append(thumb(preset.values), label);
+  c.addEventListener("click", () => {
+    params = applyLook(params, preset);
+    sync();
+    changed();
+    active = preset.name;
+    markPreset();
+  });
+  help(c, user ? `Your look "${preset.name}". Click to apply, then fine-tune it below. × deletes it.`
+    : `${preset.name}: click to apply, then fine-tune it with the sliders below. Edge width and merge stay as they are.`);
+  if (user) {
+    const x = Object.assign(document.createElement("button"), { className: "x", textContent: "×", title: "Delete this look" });
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      userPresets = userPresets.filter((p) => p !== preset);
+      savePresets();
+    });
+    c.append(x);
+  }
+  return c;
+}
+
+// The strip shows one page of cards; the arrows, the dots and the mouse wheel turn pages.
+let page = 0;
+const perPage = () => Math.max(1, Math.floor(($("strip").clientWidth + 8) / 80)); // 72 px card + 8 px gap
+function showPage(p) {
+  const cards = [...$("strip").children], n = perPage(), pages = Math.ceil(cards.length / n);
+  page = Math.max(0, Math.min(pages - 1, p));
+  cards.forEach((c, i) => (c.style.display = Math.floor(i / n) === page ? "" : "none"));
+  $("prev").disabled = page === 0;
+  $("next").disabled = page >= pages - 1;
+  $("dots").innerHTML = pages > 1 ? Array.from({ length: pages }, (_, i) => `<b class="${i === page ? "on" : ""}" data-p="${i}"></b>`).join("") : "";
+}
+
+function drawPresets() {
+  const strip = $("strip");
+  strip.textContent = "";
+  for (const p of BUILTIN) strip.append(card(p, false));
+  for (const p of userPresets) strip.append(card(p, true));
+  const add = document.createElement("button");
+  add.className = "card add";
+  add.innerHTML = icon("plus") + "<span>Save look</span>";
+  add.addEventListener("click", () => {
+    $("save").classList.add("open");
+    $("saveName").value = "";
+    $("saveName").focus();
+  });
+  help(add, "Save the current settings as your own look. It's kept for every document.");
+  strip.append(add);
+  markPreset();
+  const on = [...strip.children].findIndex((c) => c.classList.contains("on"));
+  showPage(on >= 0 ? Math.floor(on / perPage()) : page);
+}
+
+function markPreset() {
+  for (const c of $("strip").children) c.classList.toggle("on", !!active && c.dataset.name === active);
+}
+
+function savePresets() {
+  send("presets:" + JSON.stringify(userPresets));
+  drawPresets();
+}
+
+function saveCurrent() {
+  const name = $("saveName").value.trim();
+  if (!name) return $("saveName").focus();
+  if (BUILTIN.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+    $("help").textContent = `"${name}" is a built-in look. Pick another name.`;
+    return $("saveName").select();
+  }
+  userPresets = userPresets.filter((p) => p.name !== name).concat({ name, values: params.slice() });
+  active = name;
+  $("save").classList.remove("open");
+  savePresets();
+}
+
+// Called by the plug-in once the page has loaded. Older saves have fewer values: the new ones get defaults.
+function init(values, presetsJson, opts) {
+  if (pad(values)) params = pad(values);
+  try {
+    const list = JSON.parse(presetsJson || "[]");
+    userPresets = Array.isArray(list)
+      ? list.filter((p) => p && typeof p.name === "string" && pad(p.values)).map((p) => ({ name: p.name.slice(0, 40), values: pad(p.values) }))
+      : [];
+  } catch (e) {
+    userPresets = [];
+  }
+  docWidth = (opts && opts.docWidth) || docWidth;
+  if (opts && opts.version) $("ver").textContent = "v" + opts.version;
+  if (opts && opts.allowPreview === false) {
+    $("preview").checked = false;
+    $("preview").disabled = true;
+  }
+  active = lookOf(params, BUILTIN.concat(userPresets));
+  sync();
+  drawPresets();
+}
+
+build();
+$("by").addEventListener("click", () => (host ? send("link:" + LINKEDIN) : window.open(LINKEDIN)));
+$("reset").addEventListener("click", () => $("strip").children[0].click());
+$("prev").innerHTML = icon("left");
+$("next").innerHTML = icon("right");
+$("prev").addEventListener("click", () => showPage(page - 1));
+$("next").addEventListener("click", () => showPage(page + 1));
+$("dots").addEventListener("click", (e) => e.target.dataset.p && showPage(+e.target.dataset.p));
+$("strip").addEventListener("wheel", (e) => (e.preventDefault(), showPage(page + Math.sign(e.deltaY || e.deltaX))), { passive: false });
+window.addEventListener("resize", () => showPage(page));
+$("saveOk").addEventListener("click", saveCurrent);
+$("saveNo").addEventListener("click", () => $("save").classList.remove("open"));
+$("saveName").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveCurrent();
+  if (e.key === "Escape") e.stopPropagation(), $("save").classList.remove("open");
+});
+$("refresh").addEventListener("click", () => send("refresh:" + params.join(",")));
+$("preview").addEventListener("change", () => send(($("preview").checked ? "params:" : "preview-off:") + params.join(",")));
+$("ok").addEventListener("click", () => send("ok:" + params.join(",")));
+$("cancel").addEventListener("click", () => send("cancel"));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("save").classList.contains("open")) send("cancel");
+  if (e.key === "Enter" && e.target.tagName !== "INPUT" && e.target.tagName !== "BUTTON") send("ok:" + params.join(","));
+});
+if ($("logo").getAttribute("src").startsWith("{{")) $("logo").src = "../../photoshop/logo.png"; // demo mode in a browser
+if (!host) init(DEFAULTS, "[]", {});
+</script>
+</body>
+</html>

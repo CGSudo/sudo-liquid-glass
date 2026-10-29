@@ -11,64 +11,77 @@
 const { app, core, action, imaging, constants } = require("photoshop");
 const { loadEngine } = require("./engine.js");
 const { pathStream } = require("./paths.js");
+// Defaults, built-in looks and icons are shared with the Illustrator plug-in.
+const { DEFAULTS, LOOKS, icon, pad, applyLook, lookOf } = require("./looks.js");
 
-// Order = glass_core::Params.
-const DEFAULTS = [-45, 0.6, 80, 16, 20, 12, 30, 0.06, 1.2, 1, 1, 1, 0, 0.25, 24, 8, 0, 1.5, 0, 40, 24, 0.32, 1.2, 1.5, 1];
-const LOOK = 16; // presets set the first 16 (the look) and keep depth, grain, dim and merge
-const ANGLE = 0, DEPTH = 3, GRAIN = 16, GRAIN_SIZE = 17, DIM = 18;
-const PRESETS = {
-  regular: DEFAULTS,
-  // Clear: no frost, more transparent, light dimming for legibility (Apple's rule for clear glass).
-  clear: [-45, 0.7, 90, 16, 25, 0, 30, -0.08, 1.05, 1, 1, 1, 0, 0.15, 24, 8],
-};
+const ANGLE = 0, DEPTH = 3, SHADOW = 13, GRAIN = 16, GRAIN_SIZE = 17, DIM = 18, GLOW = 25, STROKE = 31;
+const BLENDS = ["Normal", "Screen", "Overlay", "Soft light", "Add", "Multiply"];
 // Film formats by frame width (mm). Grain clumps ~0.018 mm, scaled by how many mm the document width represents.
 const FORMATS = [["Super 8", 5.79], ["16 mm", 10.26], ["35 mm (36×24)", 36], ["Medium format 6×6", 56], ["Large format 4×5", 120]];
 const GRAIN_MM = 0.018;
-// Panel layout: tabs of sections; items are [param index, label, min, max, step, help]. Objects are special controls.
-const TABS = ["Glass", "Light", "Shadow", "Finish"];
+// Panel layout: tabs of sections; items are [param index, label, min, max, step, help, icon]. Objects are special controls.
+const TABS = [["Glass", "glass"], ["Light", "sun"], ["Shadow", "shadow"], ["Finish", "finish"]];
+const ICON_COLOR = "#8c9691"; // reads on both the light and the dark Photoshop theme
 const SECTIONS = [
-  { tab: 0, title: "Look", items: [{ presets: true }] },
-  { tab: 0, title: "Lens", items: [
-    [5, "Blur", 0, 200, 1, "Blurs everything behind the glass, like frosted glass, in pixels. 0 = crystal clear."],
-    [2, "Lens strength", 0, 200, 1, "How much the glass bends the picture behind it, like a magnifying lens. 0 = flat window."],
-    [3, "Edge width", 1, 300, 1, "How wide the curved rim of the glass is, in pixels. Wider = thicker, rounder glass."],
-    [6, "Edge softness", 0, 100, 1, "Low = a crisp, sharp rim. High = a soft, bubble-like rim."],
-    [4, "Dispersion", 0, 100, 1, "Light dispersion: splits light into a thin rainbow where the edge bends it, like a prism."],
+  // Always on screen, above the tabs: what people change most, so any look can be fine-tuned at once.
+  { tab: -1, title: "Quick", items: [
+    [5, "Frost", 0, 200, 1, "How frosted the glass is: blurs everything behind it, in pixels. 0 = crystal clear.", "frost"],
+    [2, "Lens", 0, 200, 1, "How much the glass bends the picture behind it, like a magnifying lens. 0 = flat window.", "lens"],
+    [3, "Edge width", 1, 300, 1, "How wide the rounded rim is, in pixels. Wider = rounder glass, but a smaller clear middle.", "edge"],
+    [1, "Shine", 0, 1, 0.01, "How bright the shiny highlights on the edge are.", "sparkle"],
   ] },
-  { tab: 0, title: "Liquid merge", items: [
-    [20, "Merge", 0, 200, 1, "Shapes closer than this many pixels melt together like drops of liquid."],
+  { tab: 0, title: "Lens", icon: "lens", items: [
+    [6, "Edge softness", 0, 100, 1, "Low = a crisp, sharp rim. High = a soft, bubble-like rim.", "soft"],
+    [4, "Dispersion", 0, 100, 1, "Light dispersion: splits light into a thin rainbow where the edge bends it, like a prism.", "prism"],
   ] },
-  { tab: 0, title: "Advanced", collapsed: true, help: "Fine control of the glass optics. Click to open or close.", items: [
-    [21, "Emboss", 0, 1, 0.01, "How raised the edge looks: the side facing the light gets brighter, the far side darker."],
-    [22, "Rim line", 0.2, 8, 0.1, "Width of the thin bright line that runs around the edge, in pixels."],
-    [23, "Glass type", 1, 2.4, 0.01, "How strongly the material bends light: 1.0 = air (no bend), 1.5 = glass, 2.4 = diamond."],
-    [24, "Sheen", 0, 2, 0.01, "Soft, broad shine across the curved edge. 1 = default, 0 = none."],
+  { tab: 0, title: "Liquid merge", icon: "merge", items: [
+    [20, "Merge", 0, 200, 1, "Shapes closer than this many pixels melt together like drops of liquid.", "merge"],
   ] },
-  { tab: 1, title: "Light", items: [
-    { dial: ANGLE, label: "Direction", help: "Where the light comes from. Drag the dial; 0° is the top." },
-    [1, "Shine", 0, 1, 0.01, "How bright the shiny highlights on the edge are."],
+  { tab: 0, title: "Advanced", icon: "advanced", collapsed: true, help: "Fine control of the glass optics. Click to open or close.", items: [
+    [21, "Emboss", 0, 1, 0.01, "How raised the edge looks: the side facing the light gets brighter, the far side darker.", "emboss"],
+    [22, "Rim line", 0.2, 8, 0.1, "Width of the thin bright line that runs around the edge, in pixels.", "rim"],
+    [23, "Glass type", 1, 2.4, 0.01, "How strongly the material bends light: 1.0 = air (no bend), 1.5 = glass, 2.4 = diamond.", "diamond"],
+    [24, "Sheen", 0, 2, 0.01, "Soft, broad shine across the curved edge. 1 = default, 0 = none.", "sheen"],
   ] },
-  { tab: 1, title: "Colour", items: [
-    [7, "Brightness", -1, 1, 0.01, "Makes the glass darker (left) or lighter (right)."],
-    [8, "Vividness", 0, 2, 0.01, "How colourful things look through the glass. 1 = unchanged."],
-    { tint: true, help: "Colours the glass, like tinted sunglasses. Type a hex colour such as #3388ff." },
-    [12, "Tint amount", 0, 1, 0.01, "How strongly the tint colour shows. 0 = no tint."],
+  { tab: 1, title: "Light", icon: "sun", items: [
+    { dial: ANGLE, label: "Direction", icon: "direction", help: "Where the light comes from. Drag the dial; 0° is the top." },
   ] },
-  { tab: 2, title: "Drop shadow", items: [
-    [13, "Darkness", 0, 1, 0.01, "How dark the shadow under the glass is. 0 = no shadow."],
-    [14, "Softness", 0, 100, 1, "How blurry the shadow's edge is, in pixels."],
-    [15, "Drop", -50, 50, 1, "How far the shadow falls below the glass, in pixels."],
+  { tab: 1, title: "Colour", icon: "palette", items: [
+    [7, "Brightness", -1, 1, 0.01, "Makes the glass darker (left) or lighter (right).", "bright"],
+    [8, "Vividness", 0, 2, 0.01, "How colourful things look through the glass. 1 = unchanged.", "drop"],
+    { color: [9, 10, 11], label: "Tint colour", icon: "palette", help: "Colours the glass, like tinted sunglasses. Type a hex colour such as #3388ff." },
+    [12, "Tint amount", 0, 1, 0.01, "How strongly the tint colour shows. 0 = no tint.", "amount"],
   ] },
-  { tab: 2, title: "Dim background", toggle: DIM, on: 0.3, help: "Darkens what's behind and around the glass so it stands out on busy images.", items: [
-    [18, "Amount", 0, 1, 0.01, "How much the background behind the glass is darkened."],
-    [19, "Spread", 0, 200, 1, "How far the darkening reaches outside the glass, in pixels."],
+  { tab: 2, title: "Drop shadow", icon: "shadow", toggle: SHADOW, on: 0.25, help: "A soft shadow under the glass, so it seems to float.", items: [
+    [13, "Darkness", 0, 1, 0.01, "How dark the shadow under the glass is. 0 = no shadow.", "amount"],
+    [14, "Softness", 0, 100, 1, "How blurry the shadow's edge is, in pixels.", "blur"],
+    [15, "Drop", -50, 50, 1, "How far the shadow falls below the glass, in pixels.", "down"],
   ] },
-  { tab: 3, title: "Film grain", toggle: GRAIN, on: 0.25, help: "Adds a fine film-photo texture to the glass.", items: [
-    { formats: true, help: "Pick a film size. Smaller film (Super 8) = bigger, rougher grain; large format = very fine grain." },
-    [16, "Amount", 0, 1, 0.01, "How visible the grain is."],
-    [17, "Size", 0.5, 12, 0.1, "Size of each grain speck, in pixels. Set by the film format; fine-tune here."],
+  { tab: 2, title: "Dim background", icon: "moon", toggle: DIM, on: 0.3, help: "Darkens what's behind and around the glass so it stands out on busy images.", items: [
+    [18, "Amount", 0, 1, 0.01, "How much the background behind the glass is darkened.", "amount"],
+    [19, "Spread", 0, 200, 1, "How far the darkening reaches outside the glass, in pixels.", "spread"],
   ] },
-  { tab: 3, title: "Edge effects", items: [{ effects: true }] },
+  { tab: 3, title: "Inner glow", icon: "glow", toggle: GLOW, on: 0.5, help: "A soft light just inside the edge, like light caught inside the glass.", items: [
+    [25, "Amount", 0, 1, 0.01, "How strong the glow is.", "amount"],
+    [26, "Size", 1, 100, 1, "How far the glow reaches in from the edge, in pixels.", "inward"],
+    { color: [27, 28, 29], label: "Glow colour", icon: "palette", help: "The colour of the glow. Type a hex colour such as #ffffff." },
+    { select: 30, label: "Blend mode", icon: "blend", options: BLENDS, help: "How the glow mixes with the glass. Normal paints the colour; Screen and Add only brighten; Overlay and Soft light add contrast; Multiply darkens." },
+  ] },
+  { tab: 3, title: "Stroke", icon: "stroke", toggle: STROKE, on: 2, help: "A line just inside the edge of the glass, in one colour or a gradient.", items: [
+    [31, "Width", 0, 50, 0.5, "How thick the stroke is, in pixels. It sits just inside the edge.", "width"],
+    { select: 34, label: "Fill", icon: "fill", options: ["Solid colour", "Gradient"], help: "Solid: one colour. Gradient: blends from the colour to the end colour across the shape." },
+    { color: [36, 37, 38], label: "Colour", icon: "palette", help: "The stroke colour (where a gradient starts). Type a hex colour such as #ffffff." },
+    [32, "Opacity", 0, 1, 0.01, "How solid the stroke is (where a gradient starts).", "opacity"],
+    { color: [39, 40, 41], label: "End colour", icon: "gradient", help: "Gradient only: the colour the stroke blends to." },
+    [33, "End opacity", 0, 1, 0.01, "Gradient only: how solid the stroke is where the gradient ends. Low = a line that fades away.", "opacity"],
+    [35, "Angle", -180, 180, 1, "Gradient only: which way the gradient runs. 0 puts the start colour at the top.", "angle"],
+  ] },
+  { tab: 3, title: "Film grain", icon: "grain", toggle: GRAIN, on: 0.25, help: "Adds a fine film-photo texture to the glass.", items: [
+    { formats: true, icon: "film", help: "Pick a film size. Smaller film (Super 8) = bigger, rougher grain; large format = very fine grain." },
+    [16, "Amount", 0, 1, 0.01, "How visible the grain is.", "amount"],
+    [17, "Size", 0.5, 12, 0.1, "Size of each grain speck, in pixels. Set by the film format; fine-tune here.", "size"],
+  ] },
+  { tab: 3, title: "Edge effects", icon: "pen", items: [{ effects: true }] },
 ];
 // shortcut: params live in the render layer name (survives save/copy/other machines); move to layer XMP once verified in PS.
 const TAG = "◆glass", UNDER = "◆shadow";
@@ -108,10 +121,8 @@ const encodeName = (p) => TAG + JSON.stringify(p.map((v) => Math.round(v * 100) 
 function decodeName(name) {
   try {
     const a = JSON.parse(name.slice(TAG.length));
-    if (!Array.isArray(a) || !a.every(Number.isFinite)) return null;
-    // Older glass stored fewer values (16 up to 0.2, 21 up to 0.5): keep them, take newer settings from the defaults.
-    if (a.length >= LOOK && a.length < DEFAULTS.length) return a.concat(DEFAULTS.slice(a.length));
-    return a.length === DEFAULTS.length ? a : null;
+    // Older glass stored fewer values (16, 21, 25 or 30): pad() fills the newer settings with defaults.
+    return pad(a);
   } catch (e) {
     return null;
   }
@@ -295,7 +306,8 @@ function regionOf(doc, bs, p) {
     right: Math.max(...bs.map((x) => x.right)), bottom: Math.max(...bs.map((x) => x.bottom)),
   };
   // The blur reaches p[5] px, so read that much extra backdrop: content just outside the shape blurs in too.
-  const m = Math.ceil(Math.max(p[3], p[14] * 1.5 + Math.abs(p[15]), p[18] > 0 ? p[19] * 1.5 : 0, p[20]) + p[5] * 2) + 4;
+  const lens = Math.min(300, ((Math.min(p[3], 24) + Math.max(0, p[3] - 24) * 0.25) * p[2]) / 100 * 4);
+  const m = Math.ceil(Math.max(p[3], lens, p[14] * 1.5 + Math.abs(p[15]), p[18] > 0 ? p[19] * 1.5 : 0, p[20]) + p[5] * 2) + 4;
   return {
     left: Math.max(0, Math.floor(b.left - m)), top: Math.max(0, Math.floor(b.top - m)),
     right: Math.min(doc.width, Math.ceil(b.right + m)), bottom: Math.min(doc.height, Math.ceil(b.bottom + m)),
@@ -529,6 +541,12 @@ async function editEffects() {
 const fmt = (v) => String(Math.round(v * 100) / 100);
 
 function showParams() {
+  if ($("strip").firstChild) markLook();
+  // Gradient-only stroke settings show only while the stroke is a gradient.
+  for (const id of ["p33", "p35", "hex39"]) {
+    const r = id.startsWith("hex") ? $(id).parentNode.parentNode : $(id).parentNode;
+    r.style.display = params[34] >= 0.5 ? "" : "none";
+  }
   for (const s of SECTIONS) {
     for (const it of s.items) {
       if (Array.isArray(it)) {
@@ -539,6 +557,12 @@ function showParams() {
         $("knob").style.left = 10 + 9 * Math.sin(a) + "px"; // 28 px dial, 6 px knob
         $("knob").style.top = 10 - 9 * Math.cos(a) + "px";
         $("n" + it.dial).value = fmt(params[it.dial]);
+      } else if (it.select !== undefined) {
+        $("s" + it.select).value = String(Math.round(params[it.select]));
+      } else if (it.color) {
+        const hex = "#" + it.color.map((i) => Math.round(Math.min(1, Math.max(0, params[i])) * 255).toString(16).padStart(2, "0")).join("");
+        $("hex" + it.color[0]).value = hex;
+        $("sw" + it.color[0]).style.backgroundColor = hex;
       }
     }
     if (s.toggle !== undefined) {
@@ -546,8 +570,6 @@ function showParams() {
       $("b" + s.toggle).style.opacity = params[s.toggle] > 0 ? "1" : "0.4";
     }
   }
-  $("tint").value = "#" + [9, 10, 11].map((i) => Math.round(params[i] * 255).toString(16).padStart(2, "0")).join("");
-  $("swatch").style.backgroundColor = $("tint").value;
 }
 function syncFromSelection() {
   const doc = app.activeDocument;
@@ -611,6 +633,7 @@ function row(label, help, ...controls) {
   const l = document.createElement("span");
   l.className = "label";
   l.textContent = label;
+  if (row.icon) l.insertBefore(iconEl(row.icon), l.firstChild);
   r.appendChild(l);
   for (const c of controls) r.appendChild(c);
   explain(r, label, help);
@@ -642,18 +665,31 @@ function dialRow({ dial, label, help }) {
   return row(label, help, dialEl, gap, numberBox(dial, -180, 180));
 }
 
-function tintRow({ help }) {
+function colorRow({ color, label, help }) {
   const box = document.createElement("span");
   box.className = "tintbox";
-  box.innerHTML = `<span id="swatch" class="swatch"></span><input id="tint" class="hex" type="text" value="#ffffff">`;
-  box.querySelector("#tint").addEventListener("change", (e) => {
+  box.innerHTML = `<span id="sw${color[0]}" class="swatch"></span><input id="hex${color[0]}" class="hex" type="text" value="#ffffff">`;
+  box.querySelector("input").addEventListener("change", (e) => {
     const m = /^#?([0-9a-f]{6})$/i.exec(e.target.value.trim());
-    if (!m) return status("Tint must be a hex colour like #3388ff.");
-    [9, 10, 11].forEach((idx, k) => (params[idx] = parseInt(m[1].slice(k * 2, k * 2 + 2), 16) / 255));
+    if (!m) return status("Colours are hex codes like #3388ff.");
+    color.forEach((idx, k) => (params[idx] = parseInt(m[1].slice(k * 2, k * 2 + 2), 16) / 255));
     showParams();
     applyParams();
   });
-  return row("Tint colour", help, box);
+  return row(label, help, box);
+}
+
+function selectRow({ select: i, label, options, help }) {
+  const sel = document.createElement("select");
+  sel.className = "pick";
+  sel.id = "s" + i;
+  sel.innerHTML = options.map((o, k) => `<option value="${k}">${o}</option>`).join("");
+  sel.addEventListener("change", () => {
+    params[i] = Number(sel.value);
+    showParams();
+    applyParams();
+  });
+  return row(label, help, sel);
 }
 
 function formatsRow({ help }) {
@@ -684,27 +720,171 @@ function effectsRow() {
   return b;
 }
 
-function presetsRow() {
-  const btns = Object.keys(PRESETS).map((k) => {
-    const b = document.createElement("sp-action-button");
-    b.setAttribute("size", "s");
-    b.textContent = k[0].toUpperCase() + k.slice(1);
-    b.addEventListener("click", () => {
-      params = params.map((v, i) => (i < LOOK && i !== DEPTH ? PRESETS[k][i] : v));
-      showParams();
-      applyParams();
-    });
-    return b;
+function iconEl(name) {
+  const s = document.createElement("span");
+  s.className = "ico";
+  s.innerHTML = icon(name, ICON_COLOR);
+  return s;
+}
+
+// ---- Looks: built-in and saved looks as cards, one page at a time ----
+let userLooks = [], lookPage = 0, activeLook = "";
+const LOOKS_KEY = "sudoLiquidGlass.looks";
+function loadUserLooks() {
+  try {
+    const list = JSON.parse(localStorage.getItem(LOOKS_KEY) || "[]");
+    userLooks = Array.isArray(list) ? list.filter((l) => l && typeof l.name === "string" && pad(l.values)).map((l) => ({ name: l.name.slice(0, 40), values: pad(l.values) })) : [];
+  } catch (e) {
+    userLooks = []; // no storage (tests) or a damaged entry: start empty
+  }
+}
+function saveUserLooks() {
+  try {
+    localStorage.setItem(LOOKS_KEY, JSON.stringify(userLooks));
+  } catch (e) {
+    status("Couldn't save your look: " + describe(e));
+  }
+  drawLooks();
+}
+
+// A real engine render of each look on a small, colourful test scene (lengths scaled down to the card size).
+const thumbCache = new Map();
+async function lookThumb(values) {
+  const key = values.join(",");
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  const w = 120, h = 72;
+  const bd = new Uint8Array(w * h * 4), mask = new Uint8Array(w * h);
+  const blobs = [[26, 24, 15, [255, 95, 109]], [94, 52, 18, [255, 195, 113]], [74, 13, 10, [54, 209, 220]]];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4, t = (x + y) / (w + h);
+      let c = [30 + 61 * t, 60 - 18 * t, 114 + 20 * t];
+      for (const [bx, by, r, col] of blobs) if ((x - bx) ** 2 + (y - by) ** 2 < r * r) c = col;
+      if (x % 7 === 0) c = c.map((v) => v + (255 - v) * 0.15);
+      bd.set([c[0], c[1], c[2], 255], i);
+      // Rounded rectangle, 16 px in from the sides, corner radius 12.
+      const dx = Math.max(0, Math.abs(x + 0.5 - w / 2) - (w / 2 - 16 - 12)), dy = Math.max(0, Math.abs(y + 0.5 - h / 2) - (h / 2 - 12 - 12));
+      mask[y * w + x] = Math.round(255 * Math.min(1, Math.max(0, 12.5 - Math.hypot(dx, dy))));
+    }
+  }
+  const p = values.slice();
+  p[3] = 9;
+  for (const i of [5, 14, 15, 19, 26]) p[i] *= 0.35;
+  p[17] *= 0.5;
+  p[31] = Math.min(p[31], 2);
+  const out = engine.render(new Float32Array(p), bd, mask, w, h);
+  const { rgb, tw, th } = previewPixels(bd, out, w, h);
+  const img = await imaging.createImageDataFromBuffer(rgb, { width: tw, height: th, components: 3, chunky: true, colorSpace: "RGB" });
+  try {
+    const src = "data:image/jpeg;base64," + (await imaging.encodeImageData({ imageData: img, base64: true }));
+    thumbCache.set(key, src);
+    return src;
+  } finally {
+    img.dispose();
+  }
+}
+
+function lookCard(look, user) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.setAttribute("data-name", look.name);
+  const th = document.createElement("div");
+  th.className = "thumb";
+  card.appendChild(th);
+  const name = document.createElement("span");
+  name.className = "cname";
+  name.textContent = look.name;
+  card.appendChild(name);
+  if (engine) lookThumb(look.values).then((src) => (th.innerHTML = `<img src="${src}" alt="">`)).catch(() => {});
+  card.addEventListener("click", () => {
+    params = applyLook(params, look);
+    activeLook = look.name;
+    showParams();
+    applyParams();
   });
-  return row("Style", "Regular: frosted glass like Apple's default. Clear: see-through glass with a light shadow.", ...btns);
+  explain(card, look.name, user ? "Your saved look. Click to apply, then fine-tune it below. × deletes it."
+    : "Click to apply, then fine-tune it with the sliders below. Edge width and merge stay as they are.");
+  if (user) {
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "×";
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      userLooks = userLooks.filter((l) => l !== look);
+      saveUserLooks();
+    });
+    card.appendChild(x);
+  }
+  return card;
+}
+
+const PER_PAGE = 4;
+function showLookPage(p) {
+  const cards = Array.from($("strip").children), pages = Math.ceil(cards.length / PER_PAGE);
+  lookPage = Math.max(0, Math.min(pages - 1, p));
+  cards.forEach((c, i) => (c.style.display = Math.floor(i / PER_PAGE) === lookPage ? "flex" : "none"));
+  $("prev").style.opacity = lookPage === 0 ? "0.2" : "1";
+  $("next").style.opacity = lookPage >= pages - 1 ? "0.2" : "1";
+  $("dots").innerHTML = pages > 1 ? Array.from({ length: pages }, (_, i) => `<span class="dot${i === lookPage ? " on" : ""}"></span>`).join("") : "";
+}
+
+function drawLooks() {
+  const strip = $("strip");
+  strip.innerHTML = "";
+  for (const l of LOOKS) strip.appendChild(lookCard(l, false));
+  for (const l of userLooks) strip.appendChild(lookCard(l, true));
+  const add = document.createElement("div");
+  add.className = "card add";
+  add.innerHTML = `<div class="thumb plus">${icon("plus", ICON_COLOR)}</div><span class="cname">Save look</span>`;
+  add.addEventListener("click", () => {
+    $("saveBox").style.display = "flex";
+    $("saveName").value = "";
+    $("saveName").focus();
+  });
+  explain(add, "Save look", "Saves the current settings as your own look, for every document.");
+  strip.appendChild(add);
+  markLook();
+  const on = Array.from(strip.children).findIndex((c) => c.className.includes(" on"));
+  showLookPage(on >= 0 ? Math.floor(on / PER_PAGE) : lookPage);
+}
+
+function markLook() {
+  activeLook = lookOf(params, LOOKS.concat(userLooks));
+  for (const c of Array.from($("strip").children)) c.className = c.className.replace(" on", "") + (activeLook && c.getAttribute("data-name") === activeLook ? " on" : "");
+}
+
+function saveLook() {
+  const name = $("saveName").value.trim();
+  if (!name) return status("Type a name for your look first.");
+  if (LOOKS.some((l) => l.name.toLowerCase() === name.toLowerCase())) return status(`"${name}" is a built-in look. Pick another name.`);
+  userLooks = userLooks.filter((l) => l.name !== name).concat({ name, values: params.slice() });
+  $("saveBox").style.display = "none";
+  saveUserLooks();
+  status(`Saved your look "${name}".`);
+}
+
+function buildLooks() {
+  $("prev").innerHTML = icon("left", ICON_COLOR);
+  $("next").innerHTML = icon("right", ICON_COLOR);
+  $("looksTitle").insertBefore(iconEl("presets"), $("looksTitle").firstChild);
+  $("prev").addEventListener("click", () => showLookPage(lookPage - 1));
+  $("next").addEventListener("click", () => showLookPage(lookPage + 1));
+  $("resetLook").addEventListener("click", () => $("strip").firstChild.click());
+  $("saveOk").addEventListener("click", saveLook);
+  $("saveNo").addEventListener("click", () => ($("saveBox").style.display = "none"));
+  $("saveName").addEventListener("keydown", (e) => e.key === "Enter" && saveLook());
+  explain($("resetLook"), "Reset", "Back to the default Liquid Glass look.");
+  loadUserLooks();
+  drawLooks();
 }
 
 function buildUI() {
   // One pane per tab; only the active one is shown.
-  const panes = TABS.map((name, t) => {
+  const panes = TABS.map(([name, ico], t) => {
     const tab = document.createElement("div");
     tab.className = "tab";
     tab.textContent = name;
+    tab.insertBefore(iconEl(ico), tab.firstChild);
     $("tabs").appendChild(tab);
     const pane = document.createElement("div");
     $("params").appendChild(pane);
@@ -722,6 +902,7 @@ function buildUI() {
     const head = document.createElement("div");
     head.className = "shead";
     head.innerHTML = `<span class="stitle">${s.title}</span>`;
+    if (s.icon) head.insertBefore(iconEl(s.icon), head.firstChild);
     const body = document.createElement("div");
     if (s.collapsed !== undefined) {
       // Collapsible section (Advanced): closed by default to keep the panel simple.
@@ -748,8 +929,14 @@ function buildUI() {
       explain(head, s.title, s.help + " Tick to turn on.");
     }
     for (const it of s.items) {
-      body.appendChild(Array.isArray(it) ? sliderRow(it) : it.dial !== undefined ? dialRow(it) : it.tint ? tintRow(it)
-        : it.formats ? formatsRow(it) : it.presets ? presetsRow() : effectsRow());
+      row.icon = Array.isArray(it) ? it[6] : it.icon; // read by row() for the label icon
+      body.appendChild(Array.isArray(it) ? sliderRow(it) : it.dial !== undefined ? dialRow(it) : it.color ? colorRow(it) : it.select !== undefined ? selectRow(it)
+        : it.formats ? formatsRow(it) : effectsRow());
+      row.icon = null;
+    }
+    if (s.tab < 0) {
+      $("quick").appendChild(body);
+      continue;
     }
     sec.appendChild(head);
     sec.appendChild(body);
@@ -761,6 +948,7 @@ function buildUI() {
   explain($("previewBox"), "Preview", "A small live picture of the selected glass, so you can see changes even when it is off-screen.");
   explain($("liveBox"), "Live updates", "When on, the glass redraws by itself whenever you change anything in the document.");
   buildBrand();
+  buildLooks();
   showParams();
 }
 
@@ -801,6 +989,7 @@ function buildBrand() {
 buildUI();
 try {
   engine = loadEngine();
+  drawLooks(); // again, now with engine-rendered thumbnails
 } catch (e) {
   engineError = e.message;
   status("Engine failed to load: " + e.message);

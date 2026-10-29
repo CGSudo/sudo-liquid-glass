@@ -45,8 +45,29 @@
     .preview img { display: block; max-width: 100%; max-height: 130px; margin: 0 auto; }
     .ptag { position: absolute; left: 6px; top: 4px; padding: 1px 5px; border-radius: 3px; font-size: 9px; color: #fff; background-color: rgba(0, 0, 0, 0.5); }
 
+    /* Looks: four cards a page, arrows and dots; no scrollbar. */
+    .looksHead { display: flex; align-items: center; height: 18px; margin-top: 6px; }
+    .looks { display: flex; align-items: center; gap: 2px; }
+    .strip { flex: 1; min-width: 0; display: flex; gap: 5px; overflow: hidden; }
+    .pg { flex: none; width: 16px; height: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px; }
+    .card { position: relative; flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; padding: 3px 3px 2px; border-radius: 7px;
+      cursor: pointer; border: 1px solid rgba(127, 127, 127, 0.18); background-color: rgba(127, 127, 127, 0.06); }
+    .card.on { border-color: #2fae7c; background-color: rgba(47, 174, 124, 0.12); }
+    .thumb { width: 100%; height: 32px; border-radius: 5px; overflow: hidden; background-color: rgba(127, 127, 127, 0.15); }
+    .thumb img { width: 100%; height: 32px; }
+    .thumb.plus { display: flex; align-items: center; justify-content: center; }
+    .cname { font-size: 9px; margin-top: 2px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card .x { position: absolute; right: 1px; top: 1px; width: 13px; height: 13px; line-height: 12px; text-align: center; border-radius: 7px;
+      font-size: 10px; color: #fff; background-color: rgba(0, 0, 0, 0.55); }
+    .dots { display: flex; justify-content: center; gap: 4px; height: 7px; margin-top: 2px; }
+    .dot { width: 4px; height: 4px; border-radius: 2px; background-color: rgba(127, 127, 127, 0.4); }
+    .dot.on { background-color: #2fae7c; }
+    .saveBox { display: none; gap: 5px; align-items: center; margin-top: 4px; }
+    .saveBox input { flex: 1; min-width: 0; }
+    #quick { margin: 4px 0 6px; padding: 2px 8px; border-radius: 7px; background-color: rgba(127, 127, 127, 0.08); }
+    .ico { flex: none; display: inline-flex; width: 14px; height: 14px; margin-right: 5px; vertical-align: middle; }
     .tabs { display: flex; padding: 2px; border-radius: 6px; background-color: rgba(127, 127, 127, 0.14); }
-    .tab { flex: 1; text-align: center; padding: 4px 0; border-radius: 4px; cursor: pointer; opacity: 0.65; }
+    .tab { flex: 1; display: flex; align-items: center; justify-content: center; padding: 4px 0; border-radius: 4px; cursor: pointer; opacity: 0.65; }
     .tab.on { opacity: 1; font-weight: bold; background-color: var(--uxp-host-background-color, #2b2b2b); color: #2fae7c; }
 
     /* Only the controls scroll. */
@@ -54,9 +75,10 @@
     .section { margin-top: 6px; padding: 5px 8px 7px; border-radius: 7px; background-color: rgba(127, 127, 127, 0.08); }
     .shead { display: flex; align-items: center; height: 18px; }
     .arrow { width: 12px; text-align: right; opacity: 0.7; }
-    .stitle { flex: 1; font-weight: bold; text-transform: uppercase; font-size: 9px; letter-spacing: 1px; opacity: 0.75; }
+    .shead .ico { margin-right: 4px; }
+    .stitle { flex: 1; display: flex; align-items: center; font-weight: bold; text-transform: uppercase; font-size: 9px; letter-spacing: 1px; opacity: 0.75; }
     .param { display: flex; align-items: center; gap: 6px; height: 24px; }
-    .label { flex: 0 0 36%; max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+    .label { flex: 0 0 38%; max-width: 116px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; cursor: help; }
     /* Range inputs have a built-in width; basis 0 lets them shrink so the number box never falls off a narrow panel. */
     .slider { flex: 1 1 0; width: 0; min-width: 30px; margin: 0; }
     .num, .hex {
@@ -104,6 +126,22 @@
     </div>
     <div class="preview" id="previewBox" style="display: none"><img id="preview" alt=""><span class="ptag">Preview</span></div>
     <div class="status" id="status">Select shape layers, then click Make Glass. Hover any setting to see what it does.</div>
+    <div class="looksHead">
+      <span class="stitle" id="looksTitle">Looks</span>
+      <span class="link" id="resetLook">Reset</span>
+    </div>
+    <div class="looks">
+      <div class="pg" id="prev"></div>
+      <div class="strip" id="strip"></div>
+      <div class="pg" id="next"></div>
+    </div>
+    <div class="dots" id="dots"></div>
+    <div class="saveBox" id="saveBox">
+      <input type="text" id="saveName" placeholder="Name your look">
+      <sp-button id="saveOk" size="s" variant="cta">Save</sp-button>
+      <sp-button id="saveNo" size="s" variant="secondary">Cancel</sp-button>
+    </div>
+    <div id="quick"></div>
     <div class="tabs" id="tabs"></div>
   </div>
   <div id="params"></div>
