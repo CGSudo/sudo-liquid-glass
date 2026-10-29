@@ -652,7 +652,7 @@ function buildUI() {
 
 // Brand: logo (logo.png in the plugin folder, else the monogram), version, About page and links.
 const LINKS = {
-  linkedin: "", // set to the profile URL; the button stays hidden while empty
+  linkedin: "https://www.linkedin.com/in/cgsudo",
   github: "https://github.com/CGSudo/sudo-liquid-glass",
   issues: "https://github.com/CGSudo/sudo-liquid-glass/issues",
 };
