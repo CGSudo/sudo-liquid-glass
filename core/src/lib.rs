@@ -8,7 +8,6 @@
 //! shape → distance field → squircle bevel height → surface normal → Snell refraction (n = 1.5)
 //! → per-channel dispersion → frost blur → saturation/brightness → tint → two opposed rim lights → shadow.
 
-const IOR: f32 = 1.5;
 const BIG: f32 = 1e20;
 
 /// All lengths in pixels. Layout is `repr(C)` and all-f32 so JS can pass a Float32Array of `PARAM_COUNT` values.
@@ -48,6 +47,14 @@ pub struct Params {
     pub dim_spread: f32,
     /// Liquid merge distance between shapes, px: closer shapes fuse and inner corners round off. 0 = plain union.
     pub merge: f32,
+    /// Advanced: emboss strength of the rim (lit side brighter, far side shaded), 0..1.
+    pub bevel: f32,
+    /// Advanced: width of the thin bright highlight that runs around the edge, px.
+    pub rim_width: f32,
+    /// Advanced: index of refraction (1.0 = no bending, 1.5 = glass, 2.4 = diamond).
+    pub ior: f32,
+    /// Advanced: strength of the broad soft highlight across the curved rim, 0..2.
+    pub sheen: f32,
 }
 
 pub const PARAM_COUNT: usize = std::mem::size_of::<Params>() / 4;
@@ -74,6 +81,10 @@ impl Default for Params {
             dim: 0.0,
             dim_spread: 40.0,
             merge: 24.0,
+            bevel: 0.32,
+            rim_width: 1.2,
+            ior: 1.5,
+            sheen: 1.0,
         }
     }
 }
@@ -211,7 +222,7 @@ impl Ctx<'_> {
 
             // Normal tilts outward where the surface rises inward; refract the view ray I = (0,0,-1).
             let (nx, ny, nz) = normalize(-slope * gx, -slope * gy, 1.0);
-            let eta = 1.0 / IOR;
+            let eta = 1.0 / p.ior.clamp(1.0, 3.0);
             let k2 = 1.0 - eta * eta * (1.0 - nz * nz);
             let f = eta * nz - k2.max(0.0).sqrt();
             let (rx, ry, rz) = (f * nx, f * ny, -eta + f * nz);
@@ -242,9 +253,9 @@ impl Ctx<'_> {
             // facing the light, plus a broad sheen across the bevel.
             let face = -(gx * self.light.0 + gy * self.light.1); // outward normal · light
             let (lit, back) = (face.max(0.0).powf(1.5), (-face).max(0.0).powf(1.5));
-            let edge = (-d / 1.2).exp();
+            let edge = (-d / p.rim_width.max(0.1)).exp();
             let sheen = (1.0 - t) * (1.0 - t) * slope.min(1.0);
-            let spec = p.light_intensity * (edge * (0.5 + 0.9 * lit + 0.6 * back) + sheen * (0.6 * lit + 0.25 * back));
+            let spec = p.light_intensity * (edge * (0.5 + 0.9 * lit + 0.6 * back) + p.sheen * sheen * (0.6 * lit + 0.25 * back));
             let spec = spec.clamp(0.0, 1.0);
             for v in c.iter_mut() {
                 let hc = 0.75 + 0.25 * *v; // highlight picks up the colour behind it
@@ -253,7 +264,7 @@ impl Ctx<'_> {
 
             // Bevel: the rounded rim catches the light on the lit side and falls into shade on the far side, so the
             // edge reads as a raised, embossed bump rather than a flat outline.
-            let bevel = p.light_intensity * face * (slope / 1.5).min(1.0) * 0.32;
+            let bevel = p.light_intensity * face * (slope / 1.5).min(1.0) * p.bevel;
             for v in c.iter_mut() {
                 *v += bevel;
             }
@@ -607,6 +618,12 @@ fn layout(len: usize) -> std::alloc::Layout {
     std::alloc::Layout::from_size_align(len.max(1), 8).expect("layout")
 }
 
+/// Number of f32 values `lg_render` reads from `p`; hosts check it so an outdated caller can't overread.
+#[no_mangle]
+pub extern "C" fn lg_param_count() -> u32 {
+    PARAM_COUNT as u32
+}
+
 /// Allocator for hosts that share linear memory (wasm). Returns null on failure.
 #[no_mangle]
 pub extern "C" fn lg_alloc(len: usize) -> *mut u8 {
@@ -702,7 +719,7 @@ mod tests {
 
     #[test]
     fn param_layout_matches_js() {
-        assert_eq!(PARAM_COUNT, 21);
+        assert_eq!(PARAM_COUNT, 25);
     }
 
     #[test]
@@ -803,5 +820,15 @@ mod tests {
         render(&Params { light_angle: 0.0, light_intensity: 1.0, ..neutral() }, &bd, &m, w, h, &mut out, None);
         let px = |x: usize, y: usize| out[(y * w + x) * 4] as i32;
         assert!(px(48, 18) > px(48, 78) + 20, "top rim {} vs bottom rim {}", px(48, 18), px(48, 78));
+    }
+
+    #[test]
+    fn index_of_refraction_one_means_no_bending() {
+        let (w, h) = (64, 64);
+        let (bd, m) = (stripes(w, h), disk(w, h, 32.0, 32.0, 24.0));
+        let mut out = vec![0u8; w * h * 4];
+        render(&Params { refraction: 150.0, ior: 1.0, ..neutral() }, &bd, &m, w, h, &mut out, None);
+        let rim = (32 * w + 10) * 4; // inside the rim, where glass bends the most
+        assert_eq!(&out[rim..rim + 3], &bd[rim..rim + 3]);
     }
 }

@@ -13,7 +13,7 @@ const { loadEngine } = require("./engine.js");
 const { pathStream } = require("./paths.js");
 
 // Order = glass_core::Params.
-const DEFAULTS = [-45, 0.6, 80, 16, 20, 4, 30, 0.06, 1.2, 1, 1, 1, 0, 0.25, 24, 8, 0, 1.5, 0, 40, 24];
+const DEFAULTS = [-45, 0.6, 80, 16, 20, 4, 30, 0.06, 1.2, 1, 1, 1, 0, 0.25, 24, 8, 0, 1.5, 0, 40, 24, 0.32, 1.2, 1.5, 1];
 const LOOK = 16; // presets set the first 16 (the look) and keep depth, grain, dim and merge
 const ANGLE = 0, DEPTH = 3, GRAIN = 16, GRAIN_SIZE = 17, DIM = 18;
 const PRESETS = {
@@ -32,11 +32,17 @@ const SECTIONS = [
     [2, "Lens strength", 0, 200, 1, "How much the glass bends the picture behind it, like a magnifying lens. 0 = flat window."],
     [3, "Edge width", 1, 300, 1, "How wide the curved rim of the glass is, in pixels. Wider = thicker, rounder glass."],
     [6, "Edge softness", 0, 100, 1, "Low = a crisp, sharp rim. High = a soft, bubble-like rim."],
-    [4, "Rainbow", 0, 100, 1, "A thin rainbow where light bends at the edge, like real glass or a prism."],
+    [4, "Dispersion", 0, 100, 1, "Light dispersion: splits light into a thin rainbow where the edge bends it, like a prism."],
     [5, "Frost", 0, 60, 0.5, "Blurs what's behind the glass, like frosted glass. 0 = crystal clear."],
   ] },
   { tab: 0, title: "Liquid merge", items: [
     [20, "Merge", 0, 200, 1, "Shapes closer than this many pixels melt together like drops of liquid."],
+  ] },
+  { tab: 0, title: "Advanced", collapsed: true, help: "Fine control of the glass optics. Click to open or close.", items: [
+    [21, "Emboss", 0, 1, 0.01, "How raised the edge looks: the side facing the light gets brighter, the far side darker."],
+    [22, "Rim line", 0.2, 8, 0.1, "Width of the thin bright line that runs around the edge, in pixels."],
+    [23, "Glass type", 1, 2.4, 0.01, "How strongly the material bends light: 1.0 = air (no bend), 1.5 = glass, 2.4 = diamond."],
+    [24, "Sheen", 0, 2, 0.01, "Soft, broad shine across the curved edge. 1 = default, 0 = none."],
   ] },
   { tab: 1, title: "Light", items: [
     { dial: ANGLE, label: "Direction", help: "Where the light comes from. Drag the dial; 0° is the top." },
@@ -103,8 +109,8 @@ function decodeName(name) {
   try {
     const a = JSON.parse(name.slice(TAG.length));
     if (!Array.isArray(a) || !a.every(Number.isFinite)) return null;
-    // Glass made by 0.1.x/0.2.0 stored 16 values: keep them, take the newer settings from the defaults.
-    if (a.length === LOOK) return a.concat(DEFAULTS.slice(LOOK));
+    // Older glass stored fewer values (16 up to 0.2, 21 up to 0.5): keep them, take newer settings from the defaults.
+    if (a.length >= LOOK && a.length < DEFAULTS.length) return a.concat(DEFAULTS.slice(a.length));
     return a.length === DEFAULTS.length ? a : null;
   } catch (e) {
     return null;
@@ -714,6 +720,20 @@ function buildUI() {
     head.className = "shead";
     head.innerHTML = `<span class="stitle">${s.title}</span>`;
     const body = document.createElement("div");
+    if (s.collapsed !== undefined) {
+      // Collapsible section (Advanced): closed by default to keep the panel simple.
+      const arrow = document.createElement("span");
+      arrow.className = "arrow";
+      head.appendChild(arrow);
+      head.style.cursor = "pointer";
+      const set = (open) => {
+        body.style.display = open ? "block" : "none";
+        arrow.textContent = open ? "▾" : "▸";
+      };
+      set(!s.collapsed);
+      head.addEventListener("click", () => set(body.style.display === "none"));
+      explain(head, s.title, s.help);
+    }
     if (s.toggle !== undefined) {
       body.id = "b" + s.toggle;
       // On/off switch in the header; on = a pleasant starting intensity.

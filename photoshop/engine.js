@@ -22,6 +22,8 @@ function createWasmEngine(bytes) {
     render(params, backdrop, masks, w, h) {
       const n = w * h;
       if (!masks.length || masks.length % n) throw new Error("masks must be whole w*h planes");
+      // The engine reads exactly this many settings; a shorter array would make it read past the buffer.
+      if (params.length !== ex.lg_param_count()) throw new Error(`expected ${ex.lg_param_count()} settings, got ${params.length}`);
       return withMemory([params.length * 4, n * 4, masks.length, n * 4, n * 4], (ptrs) => {
         // Views must be recreated after allocation: memory may have grown.
         const dv = new DataView(ex.memory.buffer);
