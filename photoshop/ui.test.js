@@ -55,7 +55,7 @@ assert.strictEqual(advBody.style.display, "block");
 for (const i of [21, 22, 23, 24]) assert($("p" + i) && $("n" + i), "advanced control " + i);
 assert.strictEqual($("n23").value, "1.5");
 // A glass saved by 0.5.x (21 values) loads with the new settings at their defaults.
-const old21 = win.T("decodeName(\"???glass[-45,0.6,80,16,20,4,30,0.06,1.2,1,1,1,0,0.25,24,8,0,1.5,0,40,24]\")");
+const old21 = win.T("decodeName(\"◆glass[-45,0.6,80,16,20,4,30,0.06,1.2,1,1,1,0,0.25,24,8,0,1.5,0,40,24]\")");
 assert.strictEqual(JSON.stringify(old21.slice(21)), "[0.32,1.2,1.5,1]");
 // Photoshop layer collections throw on symbol keys other than the iterator (that broke concat in 0.5.3).
 const PSList = (arr) => new Proxy(arr, { get(o, k) { if (typeof k === "symbol" && k !== Symbol.iterator) throw new TypeError("Cannot convert a Symbol value to a string"); return o[k]; } });
@@ -63,9 +63,9 @@ assert.throws(() => [].concat(PSList([1])), /Symbol/, "fake reproduces the Photo
 // Layer layouts: new (engine layers in the locked folder) and old (engine layers loose in the group).
 const L = (name, id, extra = {}) => ({ name, id, kind: "solidColor", ...extra });
 const shapeA = L("Rectangle 1", 1), shapeB = L("Ellipse 1", 2);
-const render = L("???glass[-45,0.6,80,16,20,4,30,0.06,1.2,1,1,1,0,0.25,24,8,0,1.5,0,40,24]", 3, { kind: "pixel" });
-const under = L("???shadow", 4, { kind: "pixel" });
-const box = L("??? glass render (automatic)", 5, { kind: "group", layers: PSList([render, under]) });
+const render = L("◆glass[-45,0.6,80,16,20,4,30,0.06,1.2,1,1,1,0,0.25,24,8,0,1.5,0,40,24]", 3, { kind: "pixel" });
+const under = L("◆shadow", 4, { kind: "pixel" });
+const box = L("◆ glass render (automatic)", 5, { kind: "group", layers: PSList([render, under]) });
 const group = L("Liquid Glass", 6, { kind: "group", layers: PSList([shapeA, shapeB, box]) });
 for (const l of [shapeA, shapeB, box]) l.parent = group;
 render.parent = under.parent = box;
@@ -76,7 +76,7 @@ assert.deepStrictEqual(g.sources.map((s) => s.name), ["Rectangle 1", "Ellipse 1"
 win.__render = render;
 assert.strictEqual(win.T("glassOf(window.__render)").group, group, "engine layer inside the folder belongs to the glass");
 assert.strictEqual(win.T("allGlass([window.__group])").length, 1, "the folder itself is not mistaken for a glass");
-const old = L("Old Glass", 7, { kind: "group", layers: PSList([L("???glass[1]", 8, { kind: "pixel" }), L("???shadow", 9, { kind: "pixel" }), L("Shape", 10, { kind: "text" })]) });
+const old = L("Old Glass", 7, { kind: "group", layers: PSList([L("◆glass[1]", 8, { kind: "pixel" }), L("◆shadow", 9, { kind: "pixel" }), L("Shape", 10, { kind: "text" })]) });
 win.__old = old;
 const og = win.T("glassParts(window.__old)");
 assert(og && !og.box && og.sources.length === 1, "pre-0.5.1 layout still recognised, packed on next render");
