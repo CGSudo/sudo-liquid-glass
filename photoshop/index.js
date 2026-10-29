@@ -66,7 +66,7 @@ const SECTIONS = [
 ];
 // shortcut: params live in the render layer name (survives save/copy/other machines); move to layer XMP once verified in PS.
 const TAG = "◆glass", UNDER = "◆shadow";
-// The engine's two layers live in one locked folder at the bottom of the glass group, so the Layers panel shows the
+// The engine's two layers live in one folder at the bottom of the glass group, so the Layers panel shows the
 // user's shapes (what they move and style) and a single "don't touch" folder. Photoshop can't hide layers outright.
 const BOX = "◆ glass render (automatic)";
 
@@ -243,20 +243,13 @@ async function readShapeMask(doc, layer, region) {
   return mask.some((v) => v > 0) ? mask : null;
 }
 
-// Moves the engine layers into the locked folder at the bottom of the glass group (shapes sit above it with
+// Moves the engine layers into the folder at the bottom of the glass group (shapes sit above it with
 // fill 0, so the glass still shows through and any styles on the shapes draw on top of the glass).
 async function packEngineLayers(doc, g, under) {
   const box = await doc.createLayerGroup({ name: BOX, fromLayers: [g.render, under] });
   const last = g.group.layers[g.group.layers.length - 1];
   if (last.id !== box.id) box.move(last, constants.ElementPlacement.PLACEAFTER);
   return box;
-}
-function setLocked(layer, on) {
-  try {
-    if (layer.allLocked !== on) layer.allLocked = on;
-  } catch (e) {
-    at("lock not supported here: " + describe(e)); // older Photoshop: the folder just stays unlocked
-  }
 }
 
 // Small picture of the render for the panel: backdrop, then shadow, then glass, scaled to ≤ 320 px wide, as JPEG.
@@ -289,30 +282,38 @@ async function showPreview(backdrop, out, w, h) {
   }
 }
 
-async function renderGlass(ctx, doc, g) {
-  const p = decodeName(g.render.name) || DEFAULTS;
-  const bs = g.sources.map((s) => s.bounds);
+// Union of the shapes plus room for lens reach, shadow, dim halo and liquid bridges, clipped to the document.
+function regionOf(doc, bs, p) {
   const b = {
     left: Math.min(...bs.map((x) => x.left)), top: Math.min(...bs.map((x) => x.top)),
     right: Math.max(...bs.map((x) => x.right)), bottom: Math.max(...bs.map((x) => x.bottom)),
   };
-  // Room for lens reach, shadow, dim halo and liquid bridges.
   const m = Math.ceil(Math.max(p[3], p[14] * 1.5 + Math.abs(p[15]), p[18] > 0 ? p[19] * 1.5 : 0, p[20])) + 4;
-  const region = {
+  return {
     left: Math.max(0, Math.floor(b.left - m)), top: Math.max(0, Math.floor(b.top - m)),
     right: Math.min(doc.width, Math.ceil(b.right + m)), bottom: Math.min(doc.height, Math.ceil(b.bottom + m)),
   };
-  const w = region.right - region.left, h = region.bottom - region.top;
-  if (w <= 0 || h <= 0) return;
+}
+
+async function renderGlass(ctx, doc, g) {
+  const p = decodeName(g.render.name) || DEFAULTS;
   if (!engine) throw new Error("glass engine failed to load: " + engineError);
 
-  at(`render "${g.group.name}" (${g.sources.length} shapes) region ${JSON.stringify(region)}`);
-
-  // Peek: read shapes + backdrop, then roll back (restores selection and visibility) so the document is untouched.
+  // Peek: measure shapes, read outlines + backdrop, then roll back (restores fill, selection and visibility)
+  // so the document is untouched.
   const peek = await ctx.hostControl.suspendHistory({ documentID: doc.id, name: "Liquid Glass" });
   const masks = [];
-  let backdrop;
+  let backdrop, region, w = 0, h = 0;
   try {
+    // Sources sit at fill 0 (they are the glass), and Photoshop then reports them as empty: no bounds, no pixels.
+    // Give them their fill back for the peek so they measure and read correctly; the rollback restores fill 0.
+    at("measure shapes");
+    for (const s of g.sources) if (s.fillOpacity !== 100) s.fillOpacity = 100;
+    region = regionOf(doc, g.sources.map((s) => s.bounds), p);
+    w = region.right - region.left;
+    h = region.bottom - region.top;
+    if (w <= 0 || h <= 0) return;
+    at(`render "${g.group.name}" (${g.sources.length} shapes) region ${JSON.stringify(region)}`);
     at("read shape outlines");
     for (const s of g.sources) {
       const mk = await readShapeMask(doc, s, region);
@@ -355,13 +356,17 @@ async function renderGlass(ctx, doc, g) {
       under.move(g.render, constants.ElementPlacement.PLACEAFTER);
     }
     const box = g.box || (await packEngineLayers(doc, g, under));
-    setLocked(box, false); // locked against stray clicks, but our own writes need it open
+    // 0.5.1–0.5.4 locked this folder, which makes Photoshop refuse our writes: unlock it (and its layers) for good.
+    for (const l of [box, g.render, under]) {
+      try {
+        if (l.allLocked) l.allLocked = false;
+      } catch (e) { /* older Photoshop without lock properties: nothing was locked */ }
+    }
     // Shapes dragged into the glass later still show their fill: hide it, they're glass now.
     for (const s of g.sources) if (s.fillOpacity !== 0) s.fillOpacity = 0;
     const at0 = { left: region.left, top: region.top };
     await imaging.putPixels({ documentID: doc.id, layerID: g.render.id, imageData: glassImg, replace: true, targetBounds: at0 });
     await imaging.putPixels({ documentID: doc.id, layerID: under.id, imageData: underImg, replace: true, targetBounds: at0 });
-    setLocked(box, true);
     await ctx.hostControl.resumeHistory(keep, true);
     at("done");
   } finally {

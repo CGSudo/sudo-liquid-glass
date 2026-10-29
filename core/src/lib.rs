@@ -251,13 +251,23 @@ impl Ctx<'_> {
                 *v += (hc - *v) * spec;
             }
 
-            // Film grain: two octaves of clumps, strongest in the midtones like silver halide; fixed to the glass
-            // (same pattern every render, so it never flickers).
+            // Bevel: the rounded rim catches the light on the lit side and falls into shade on the far side, so the
+            // edge reads as a raised, embossed bump rather than a flat outline.
+            let bevel = p.light_intensity * face * (slope / 1.5).min(1.0) * 0.32;
+            for v in c.iter_mut() {
+                *v += bevel;
+            }
+
+            // Film grain: monochrome (one value for all three channels, never per-channel colour noise), two
+            // octaves of clumps, strongest in the midtones like silver halide; fixed to the glass so it never flickers.
             if p.grain > 0.0 {
                 let s = p.grain_size;
                 let n = 0.65 * grain_noise(x as f32, y as f32, s) + 0.35 * grain_noise(x as f32 + 71.3, y as f32 + 19.7, s * 0.5);
                 let l = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]).clamp(0.0, 1.0);
                 let g = (n - 0.5) * p.grain * (0.35 + 2.6 * l * (1.0 - l)) * 0.9;
+                // Limit the shift so no channel clips: clipping one channel but not the others would tint the grain.
+                let (hi, lo) = (c[0].max(c[1]).max(c[2]), c[0].min(c[1]).min(c[2]));
+                let g = g.min((1.0 - hi).max(0.0)).max(-lo.max(0.0));
                 for v in c.iter_mut() {
                     *v += g;
                 }
@@ -765,5 +775,33 @@ mod tests {
         assert!(dimmed[(32 * w + 56) * 4 + 3] > 0, "dim halo reaches outside the edge");
         assert_eq!(plain[(32 * w + 56) * 4 + 3], 0);
         assert!((0..w * h).filter(|&i| m[i] == 255 && grainy[i * 4] != plain[i * 4]).count() > 300, "grain shows");
+    }
+
+    #[test]
+    fn grain_is_monochrome() {
+        let (w, h) = (64, 64);
+        let (bd, m) = (stripes(w, h), disk(w, h, 32.0, 32.0, 24.0));
+        let (mut plain, mut grainy) = (vec![0u8; w * h * 4], vec![0u8; w * h * 4]);
+        render(&neutral(), &bd, &m, w, h, &mut plain, None);
+        render(&Params { grain: 0.8, ..neutral() }, &bd, &m, w, h, &mut grainy, None);
+        let mut changed = 0;
+        for i in (0..w * h).filter(|&i| m[i] == 255) {
+            let d: Vec<i32> = (0..3).map(|c| grainy[i * 4 + c] as i32 - plain[i * 4 + c] as i32).collect();
+            assert!((d[0] - d[1]).abs() <= 1 && (d[1] - d[2]).abs() <= 1, "grain tinted a pixel: {d:?}");
+            changed += (d[0] != 0) as usize;
+        }
+        assert!(changed > 300, "grain shows");
+    }
+
+    #[test]
+    fn bevel_lights_one_side_of_the_rim_and_shades_the_other() {
+        let (w, h) = (96, 96);
+        let bd = [128u8, 128, 128, 255].repeat(w * h);
+        let m = disk(w, h, 48.0, 48.0, 36.0);
+        let mut out = vec![0u8; w * h * 4];
+        // Light from the top (0°), no lens, no specular sheen on flat areas: only the bevel differs top vs bottom.
+        render(&Params { light_angle: 0.0, light_intensity: 1.0, ..neutral() }, &bd, &m, w, h, &mut out, None);
+        let px = |x: usize, y: usize| out[(y * w + x) * 4] as i32;
+        assert!(px(48, 18) > px(48, 78) + 20, "top rim {} vs bottom rim {}", px(48, 18), px(48, 78));
     }
 }
