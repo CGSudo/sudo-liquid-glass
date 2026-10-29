@@ -8,7 +8,7 @@
 
 ![Sudo Liquid Glass: Apple-style liquid glass effect in Photoshop](preview.png)
 
-**Download:** [latest release (SudoLiquidGlass.ccx)](../../releases/latest) Â· Photoshop 2023 (v24.2) or newer Â· Windows (macOS should work, not yet tested)
+**Download:** [latest release (SudoLiquidGlass.ccx)](../../releases/latest) · Photoshop 2023 (v24.2) or newer · Windows (macOS should work, not yet tested)
 
 ## Features
 - **One click, non-destructive:** select shape layers and click **Make Glass**. Your shapes stay fully editable vector layers.
@@ -22,14 +22,14 @@
   - vividness and tint,
   - two rim lights with a light direction dial.
 - **Shadow and Dim background:** a soft drop shadow, plus an optional dimming halo that keeps glass legible on busy photos.
-- **Film grain:** grain sized by film format: Super 8, 16 mm, 35 mm, 6Ã—6 medium format, 4Ã—5 large format.
+- **Film grain:** grain sized by film format: Super 8, 16 mm, 35 mm, 6×6 medium format, 4×5 large format.
 - **Edge effects with Layer Styles:** the glass layer is exactly your shape, so Photoshop's own strokes (solid or gradient), glows and shadows trace it and stack.
-- **Fast:** the renderer is written in **Rust** and runs as **WebAssembly**. A 1000Ã—1000 glass renders in about 0.3 s.
+- **Fast:** the renderer is written in **Rust** and runs as **WebAssembly**. A 1000×1000 glass renders in about 0.3 s.
 
 ## Install
 1. Download `SudoLiquidGlass.ccx` from the [latest release](../../releases/latest).
 2. Double-click it. Creative Cloud installs the plugin.
-3. Restart Photoshop and open **Plugins â€º Sudo Liquid Glass**.
+3. Restart Photoshop and open **Plugins › Sudo Liquid Glass**.
 
 ## How to use
 1. Draw shapes with a Shape tool, or with the Pen tool in Shape mode.
@@ -55,7 +55,7 @@ Sudo Liquid Glass aims to bring the same live glass to every Adobe app:
 
 ## How it works
 ```
-core/        Rust renderer (glass_core): backdrop + shape masks â†’ glass layer + shadow layer
+core/        Rust renderer (glass_core): backdrop + shape masks → glass layer + shadow layer
 photoshop/   UXP plugin: panel, live updates, vector path reader, WebAssembly bridge
 preview/     renders the preview images from a test backdrop
 ```
@@ -96,4 +96,4 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 - Brush strokes don't trigger an update: press **Refresh**.
 
 ## License
-[MIT](LICENSE) Â© CGSudo. Not affiliated with Apple or Adobe. "Liquid Glass" refers to Apple's design material; Photoshop is a trademark of Adobe.
+[MIT](LICENSE) © CGSudo. Not affiliated with Apple or Adobe. "Liquid Glass" refers to Apple's design material; Photoshop is a trademark of Adobe.
