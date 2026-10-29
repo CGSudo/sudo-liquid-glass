@@ -2,8 +2,9 @@
 
 Sudo Liquid Glass recreates Apple's Liquid Glass material inside Adobe apps. It is live and non-destructive: the glass reads what is behind it and re-renders, and it never merges or flattens layers.
 
-- **Today:** Photoshop, a UXP plugin.
-- **Goal:** the same engine in **Illustrator, Premiere Pro and After Effects**.
+- **Today:** Photoshop only, a UXP plugin.
+- **Goal:** the same engine in **Illustrator, Premiere Pro and After Effects**. These are plans: none of them is released. Never describe them as available.
+- **Packaging:** `.ccx` (UXP). ZXP is for CEP extensions and doesn't apply. Platforms are Windows and macOS: wasm, with no platform-specific code. So far it has been tested on Windows only.
 
 Read this file first. Then read the top-of-file comment in `core/src/lib.rs` and `photoshop/index.js`.
 
@@ -17,7 +18,7 @@ photoshop/engine.js    loads glass_core.wasm (or a native addon if one exists); 
 photoshop/paths.js     Photoshop vector path (batchPlay pathComponents) → fill_paths stream
 photoshop/*.test.js    Node tests that run the real wasm
 preview/src/main.rs    renders preview*.png from a synthetic backdrop
-install.ps1            packages photoshop/ → dist/SudoLiquidGlass.ccx and installs it via Adobe UPIA (Windows)
+install.ps1 / install.sh  package photoshop/ → dist/SudoLiquidGlass.ccx and install it via Adobe UPIA (Windows / macOS)
 ```
 
 ## The one contract every host shares: `Params`
@@ -92,7 +93,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -NoInstall
   1. Rasterize the art below the shape (`srcArt`) and the shape itself.
   2. Call `lg_render` (link `glass_core` as a staticlib).
   3. Return the raster.
-  - Working prototype, not yet published. Open issue: when the art *below* the glass changes, a notifier must force the effect to re-run.
+  - In early development: it builds, but it is not published and not yet verified in Illustrator. Open issue: when the art *below* the glass changes, a notifier must force the effect to re-run.
 - **After Effects and Premiere Pro:** one effect plugin built with the After Effects SDK runs in both apps, because Premiere hosts AE effect plugins.
   - Backdrop: the layer's input (or a checked-out layer below).
   - Mask: the layer's alpha, or an effect parameter that picks a layer.

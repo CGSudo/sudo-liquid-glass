@@ -1,6 +1,6 @@
-# Sudo Liquid Glass: Apple Liquid Glass effect for Photoshop
+# Liquid Glass for Photoshop: Sudo Liquid Glass plugin (Apple iOS 26 glass effect)
 
-**Sudo Liquid Glass** is a free, open-source Photoshop plugin that recreates Apple's **Liquid Glass** material from iOS 26 and macOS Tahoe. You get real, live, refracting glass from your own shape layers in one click, like the glass effect in Figma.
+**Sudo Liquid Glass** is a free, open-source **Photoshop plugin** that recreates Apple's **Liquid Glass** effect from iOS 26 and macOS Tahoe. Turn your own shape layers into real, live, refracting glass in one click, like the glass effect in Figma. It runs on Windows and macOS.
 
 - Not a fake glassmorphism blur: the edges bend light (Snell refraction) and split it into a rainbow (dispersion).
 - No merging or flattening layers.
@@ -8,7 +8,9 @@
 
 ![Sudo Liquid Glass: Apple-style liquid glass effect in Photoshop](preview.png)
 
-**Download:** [latest release (SudoLiquidGlass.ccx)](../../releases/latest) · Photoshop 2023 (v24.2) or newer · Windows (macOS should work, not yet tested)
+**Download:** [latest release (SudoLiquidGlass.ccx)](../../releases/latest) · Photoshop 2023 (v24.2) or newer · Windows and macOS (Intel and Apple Silicon)
+
+> **Platform status:** tested in Photoshop on Windows. The macOS build is the same package with no platform-specific code, but it hasn't been tested on a Mac yet. If you try it on a Mac, please [open an issue](../../issues) with the result.
 
 ## Features
 - **One click, non-destructive:** select shape layers and click **Make Glass**. Your shapes stay fully editable vector layers.
@@ -26,10 +28,25 @@
 - **Edge effects with Layer Styles:** the glass layer is exactly your shape, so Photoshop's own strokes (solid or gradient), glows and shadows trace it and stack.
 - **Fast:** the renderer is written in **Rust** and runs as **WebAssembly**. A 1000×1000 glass renders in about 0.3 s.
 
-## Install
+## Install (Windows and macOS)
 1. Download `SudoLiquidGlass.ccx` from the [latest release](../../releases/latest).
-2. Double-click it. Creative Cloud installs the plugin.
+2. Double-click it. The Creative Cloud desktop app opens and installs the plugin.
 3. Restart Photoshop and open **Plugins › Sudo Liquid Glass**.
+
+If double-clicking doesn't install it, install from the command line with Adobe's own installer (Creative Cloud must be installed):
+- **macOS:**
+  ```bash
+  "/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent" --install ~/Downloads/SudoLiquidGlass.ccx
+  ```
+- **Windows** (Command Prompt):
+  ```bat
+  "C:\Program Files\Common Files\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe" /install %USERPROFILE%\Downloads\SudoLiquidGlass.ccx
+  ```
+
+**Why `.ccx` and not `.zxp`?** ZXP is the package format of Adobe's older CEP extensions. Sudo Liquid Glass is a modern UXP plugin, and Adobe packages those as `.ccx`, the same format its own plugin marketplace uses.
+
+## How to make Apple's Liquid Glass effect in Photoshop
+Without a plugin, the usual approach is a blurred, merged copy of the background clipped to a shape, plus bevels and highlights. That's a static glassmorphism fake, and it breaks as soon as anything moves. Sudo Liquid Glass computes real refraction from the layers behind your shape and keeps it live.
 
 ## How to use
 1. Draw shapes with a Shape tool, or with the Pen tool in Shape mode.
@@ -47,10 +64,10 @@
 - Plain pixel layers can't become glass: use a shape layer.
 
 ## Roadmap
-Sudo Liquid Glass aims to bring the same live glass to every Adobe app:
-- [x] **Photoshop**: UXP plugin (this repo)
-- [ ] **Illustrator**: native Live Effect in the Appearance panel (working prototype)
-- [ ] **After Effects** and **Premiere Pro**: one native effect plugin with keyframeable, animatable glass
+**Today Sudo Liquid Glass is for Photoshop only.** Other apps are plans, not releases:
+- [x] **Photoshop**: available now (this repo)
+- [ ] **Illustrator**: planned; in early development, not released
+- [ ] **After Effects** and **Premiere Pro**: planned, not started
 - [ ] GPU rendering, linear-light blending, light/dark adaptive tint
 
 ## How it works
@@ -84,10 +101,17 @@ node photoshop/engine.test.js
 ```bash
 node photoshop/paths.test.js
 ```
-To load it unpackaged, add `photoshop/manifest.json` in Adobe's **UXP Developer Tool**. To package and install it on Windows (this writes `dist/SudoLiquidGlass.ccx`):
-```bash
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
+To load it unpackaged, add `photoshop/manifest.json` in Adobe's **UXP Developer Tool**. To package it as `dist/SudoLiquidGlass.ccx` and install it:
+- **Windows:**
+  ```bash
+  powershell -ExecutionPolicy Bypass -File install.ps1
+  ```
+- **macOS:**
+  ```bash
+  sh install.sh
+  ```
+
+Add `-NoInstall` (Windows) or `--no-install` (macOS) to only build the package.
 
 ## Known limits
 - RGB documents only.
