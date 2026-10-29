@@ -1,0 +1,16 @@
+Sudo Liquid Glass for Photoshop - live, real Liquid Glass from your shape and text layers.
+
+INSTALL (pick one)
+  1. Double-click SudoLiquidGlass.ccx. Creative Cloud installs it.
+  2. Windows: double-click "Install on Windows.bat".
+     Mac: double-click "Install on Mac.command". If macOS says it can't be opened,
+     right-click it > Open > Open (it is a small script, not signed by Apple).
+
+Then restart Photoshop and open Plugins > Sudo Liquid Glass.
+Needs Photoshop 2023 (v24.2) or newer and the Creative Cloud desktop app.
+
+Why .ccx and not .zxp? ZXP is the format of Adobe's older CEP extensions.
+This is a modern UXP plugin; Adobe packages those as .ccx.
+
+Help, updates and source: https://github.com/CGSudo/sudo-liquid-glass
+Made by CGSudo - https://www.linkedin.com/in/cgsudo

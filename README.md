@@ -47,6 +47,10 @@ You know the routine. Merge a copy of the background, blur it, clip it to a shap
 2. Double-click it. The Creative Cloud desktop app installs the plugin.
 3. Restart Photoshop and open **Plugins › Sudo Liquid Glass**.
 
+**One-click installer:** if double-clicking the `.ccx` doesn't work on your machine, download `SudoLiquidGlass-…-installer.zip` from the same release, unzip it, and double-click the installer for your system:
+- **Windows:** `Install on Windows.bat`.
+- **Mac:** `Install on Mac.command`. If macOS blocks it, right-click › Open.
+
 If double-clicking doesn't install it, use Adobe's own installer from the command line (Creative Cloud must be installed):
 - **macOS:**
   ```bash

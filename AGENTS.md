@@ -2,7 +2,7 @@
 
 Sudo Liquid Glass recreates Apple's Liquid Glass material inside Adobe apps. It is live and non-destructive: the glass reads what is behind it and re-renders, and it never merges or flattens layers.
 
-- **Today:** Photoshop only, a UXP plugin, at v0.6.0.
+- **Today:** Photoshop only, a UXP plugin, at v0.6.1.
 - **Goal:** the same engine in **Illustrator, Premiere Pro and After Effects**. These are plans: none of them is released. Never describe them as available.
 - **Packaging:** `.ccx` (UXP). ZXP is for CEP extensions and doesn't apply.
 - **Platforms:** Windows and macOS. The engine is wasm and there is no platform-specific code, but it has been tested on Windows only.
@@ -28,6 +28,7 @@ photoshop/logo.png       SUDO logo shown in the panel header and About page
 photoshop/*.test.js      engine.test.js / paths.test.js run the real wasm; ui.test.js loads the panel in jsdom
                          with a fake Photoshop (layer lists are Proxies that behave like Photoshop's)
 preview/src/main.rs      renders preview*.png from a synthetic backdrop (engine test renders, not screenshots)
+installer/               one-click install scripts shipped in the release zip (Windows .bat, Mac .command)
 install.ps1 / install.sh package photoshop/ → dist/SudoLiquidGlass.ccx and install via Adobe UPIA (Windows / macOS)
 package.json             dev tooling only: `npm install` (jsdom), then `npm test` runs every test
 ```
@@ -124,7 +125,9 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -NoInstall
   1. Bump `version` in `photoshop/manifest.json` (no BOM).
   2. Run `npm test`.
   3. Package with `install.ps1 -NoInstall`.
-  4. Push, then attach `dist/SudoLiquidGlass.ccx` to a GitHub release.
+  4. Commit, then build the one-click zip. It holds the `.ccx` plus `installer/` (the Windows .bat, the Mac .command with its exec bit, and READ ME); `HEAD:installer` flattens the folder:
+     `git archive --format=zip --prefix=SudoLiquidGlass-<ver>/ --add-file=dist/SudoLiquidGlass.ccx -o dist/SudoLiquidGlass-<ver>-installer.zip HEAD:installer`
+  5. Push, then attach both files to a GitHub release.
 - Be honest in public text: say "tested on Windows", and label engine renders as test renders, not Photoshop screenshots.
 
 ## Roadmap for other hosts (all reuse `lg_render`)

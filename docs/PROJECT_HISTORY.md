@@ -39,13 +39,13 @@ For the code-level contract, read [AGENTS.md](../AGENTS.md) next.
 
 ---
 
-## 2. What the product does (as of v0.6.0)
+## 2. What the product does (as of v0.6.1)
 
 - **Make Glass:** select shape and/or text layers, click **Make Glass**, and they become one glass group.
 - **Real optics:**
   - Snell refraction at the rim (index of refraction adjustable, default 1.5);
   - per-channel dispersion (rainbow);
-  - frosted blur, vividness, tint;
+  - frosted blur of everything under the glass (radius 0–200 px), vividness, tint;
   - two rim lights with a direction dial, plus a **bevel/emboss** shading of the rim;
   - drop shadow;
   - optional **Dim background** halo;
@@ -183,6 +183,21 @@ The owner confirmed: **"All working"** (v0.5.5).
 - **Done:** a parameter-count guard (`lg_param_count`), `npm test` running all four test suites, this document, an updated AGENTS.md, and release v0.6.0.
 
 ---
+
+### Phase 12: Blur, one-click install, developer kit [0.6.1]
+- **"It's not blurring all stuff underneath it."** The cause: the default Frost was 4, and the engine used half of it as the blur radius, so it was barely visible.
+  - Blur is now the real radius in px, default 12, and auto-scales with the shape on Make Glass (6% of the short side).
+  - The range is 0–200, and the control comes first in Lens.
+  - Extra backdrop is read around the shape so the edges blur naturally.
+  - A test checks that the centre of the glass is blurred.
+- **"Make it one-click like a ZXP."** A real ZXP is impossible for UXP. Each release ships:
+  - `SudoLiquidGlass.ccx` (double-click to install);
+  - `SudoLiquidGlass-<ver>-installer.zip` with `Install on Windows.bat` and `Install on Mac.command` (both call Adobe UPIA and remove any old copy first).
+  - The Windows script was verified on the dev machine; the Mac script is untested.
+- **"Give me a package zip with all the knowledge."** The developer kit zip (owner's machine, `E:AISudoLiquidGlass-devkit-<ver>.zip`) contains:
+  - this repo with full git history of every branch (a git bundle, including the local-only `cosmic` branch);
+  - the research references;
+  - the Illustrator prototypes (no Adobe SDK).
 
 ## 4. Fundamentals installed on the dev machine (Windows 11)
 
