@@ -62,6 +62,9 @@ const SECTIONS = [
 ];
 // shortcut: params live in the render layer name (survives save/copy/other machines); move to layer XMP once verified in PS.
 const TAG = "◆glass", UNDER = "◆shadow";
+// The engine's two layers live in one locked folder at the bottom of the glass group, so the Layers panel shows the
+// user's shapes (what they move and style) and a single "don't touch" folder. Photoshop can't hide layers outright.
+const BOX = "◆ glass render (automatic)";
 
 const $ = (id) => document.getElementById(id);
 const status = (s) => ($("status").textContent = s);
@@ -98,16 +101,19 @@ function decodeName(name) {
     return null;
   }
 }
-const isOurs = (l) => l.name.startsWith(TAG) || l.name.startsWith(UNDER);
+const isOurs = (l) => l.name.startsWith(TAG) || l.name.startsWith(UNDER) || l.name === BOX;
 // Plain pixel layers crash Photoshop when read as a glass outline: only shapes (and text/smart objects) are sources.
 const isRaster = (l) => l.kind === constants.LayerKind.NORMAL || l.kind === "pixel";
 
 function glassParts(group) {
   if (!group || !group.layers) return null;
-  const render = group.layers.find((l) => l.name.startsWith(TAG));
-  const under = group.layers.find((l) => l.name.startsWith(UNDER));
+  const box = group.layers.find((l) => l.name === BOX && l.layers);
+  // Glass from 0.5 and earlier keeps its engine layers directly in the group; they move into the box on next render.
+  const pool = box ? box.layers.concat(group.layers) : group.layers;
+  const render = pool.find((l) => l.name.startsWith(TAG));
+  const under = pool.find((l) => l.name.startsWith(UNDER));
   const sources = group.layers.filter((l) => !isOurs(l) && !l.layers && !isRaster(l));
-  return render && sources.length ? { group, render, under, sources } : null;
+  return render && sources.length ? { group, box, render, under, sources } : null;
 }
 function allGlass(layers, out = []) {
   for (const l of layers) {
@@ -206,6 +212,22 @@ async function readShapeMask(doc, layer, region) {
   return mask.some((v) => v > 0) ? mask : null;
 }
 
+// Moves the engine layers into the locked folder at the bottom of the glass group (shapes sit above it with
+// fill 0, so the glass still shows through and any styles on the shapes draw on top of the glass).
+async function packEngineLayers(doc, g, under) {
+  const box = await doc.createLayerGroup({ name: BOX, fromLayers: [g.render, under] });
+  const last = g.group.layers[g.group.layers.length - 1];
+  if (last.id !== box.id) box.move(last, constants.ElementPlacement.PLACEAFTER);
+  return box;
+}
+function setLocked(layer, on) {
+  try {
+    if (layer.allLocked !== on) layer.allLocked = on;
+  } catch (e) {
+    at("lock not supported here: " + describe(e)); // older Photoshop: the folder just stays unlocked
+  }
+}
+
 async function renderGlass(ctx, doc, g) {
   const p = decodeName(g.render.name) || DEFAULTS;
   const bs = g.sources.map((s) => s.bounds);
@@ -262,11 +284,14 @@ async function renderGlass(ctx, doc, g) {
       under = await (doc.createPixelLayer ? doc.createPixelLayer({ name: UNDER }) : doc.createLayer({ name: UNDER }));
       under.move(g.render, constants.ElementPlacement.PLACEAFTER);
     }
+    const box = g.box || (await packEngineLayers(doc, g, under));
+    setLocked(box, false); // locked against stray clicks, but our own writes need it open
     // Shapes dragged into the glass later still show their fill: hide it, they're glass now.
     for (const s of g.sources) if (s.fillOpacity !== 0) s.fillOpacity = 0;
     const at0 = { left: region.left, top: region.top };
     await imaging.putPixels({ documentID: doc.id, layerID: g.render.id, imageData: glassImg, replace: true, targetBounds: at0 });
     await imaging.putPixels({ documentID: doc.id, layerID: under.id, imageData: underImg, replace: true, targetBounds: at0 });
+    setLocked(box, true);
     await ctx.hostControl.resumeHistory(keep, true);
     at("done");
   } finally {
@@ -351,7 +376,7 @@ function makeGlass() {
     const h = await ctx.hostControl.suspendHistory({ documentID: doc.id, name: target ? "Add to Liquid Glass" : "Make Liquid Glass" });
     if (target) {
       at("add shapes to glass");
-      for (const s of shapes) s.move(target.render, constants.ElementPlacement.PLACEAFTER);
+      for (const s of shapes) s.move(target.group.layers[0], constants.ElementPlacement.PLACEBEFORE); // above the engine folder
     } else {
       at("create group");
       const group = await doc.createLayerGroup({ name: "Liquid Glass", fromLayers: shapes });
@@ -365,7 +390,9 @@ function makeGlass() {
       render.move(group.layers[0], constants.ElementPlacement.PLACEBEFORE);
       const under = await make(UNDER);
       under.move(render, constants.ElementPlacement.PLACEAFTER);
-      if (!glassParts(group)) throw new Error("could not build glass group");
+      const g = glassParts(group);
+      if (!g) throw new Error("could not build glass group");
+      await packEngineLayers(doc, g, under);
     }
     await ctx.hostControl.resumeHistory(h, true);
   });
@@ -386,12 +413,15 @@ function applySoon() {
   timer = setTimeout(applyParams, 120);
 }
 
-// Opens Photoshop's Layer Style dialog on the glass layer: strokes (solid/gradient), glows, shadows, all stackable.
+// Opens Photoshop's Layer Style dialog on a glass shape: strokes (solid/gradient), glows, shadows, all stackable.
 async function editEffects() {
   const doc = app.activeDocument;
   const g = doc && ((doc.activeLayers.length && glassOf(doc.activeLayers[0])) || allGlass(doc.layers)[0]);
   if (!g) return status("Make a glass first.");
-  const ref = [{ _ref: "layer", _id: g.render.id }];
+  // Effects go on a shape (the selected one, else the first): shape layers keep their effects at fill 0, and a
+  // stroke there traces the real vector edge.
+  const shape = doc.activeLayers.find((l) => g.sources.some((s) => s.id === l.id)) || g.sources[0];
+  const ref = [{ _ref: "layer", _id: shape.id }];
   try {
     await core.executeAsModal(async () => {
       await action.batchPlay([{ _obj: "select", _target: ref, makeVisible: false }], {});
@@ -406,7 +436,7 @@ async function editEffects() {
       }], {});
     }, { commandName: "Glass edge effects", interactive: true });
   } catch (e) {
-    status("Glass layer selected: double-click it (or click fx in the Layers panel) to add strokes, glows and shadows.");
+    status(`"${shape.name}" is selected: double-click it (or click fx in the Layers panel) to add strokes, glows and shadows.`);
   }
 }
 
@@ -442,6 +472,16 @@ function syncFromSelection() {
   if (p) {
     params = p;
     showParams();
+  }
+  // Clicking the glass on the canvas lands on an engine layer; hand the selection to the shapes, which are what
+  // the user moves, reshapes and styles.
+  if (g && !busy && doc.activeLayers.every(isOurs)) {
+    core.executeAsModal(async () => {
+      await action.batchPlay(g.sources.map((s, i) => ({
+        _obj: "select", _target: [{ _ref: "layer", _id: s.id }], makeVisible: false,
+        ...(i && { selectionModifier: { _enum: "selectionModifierType", _value: "addToSelection" } }),
+      })), {});
+    }, { commandName: "Select glass shapes" }).catch((e) => status("Select the shape layers to move the glass. (" + describe(e) + ")"));
   }
 }
 
@@ -540,8 +580,8 @@ function effectsRow() {
   const row = document.createElement("div");
   row.className = "param";
   row.innerHTML = `<sp-button id="effects" variant="secondary">Strokes, glows & shadows…</sp-button>
-    <div class="help">Opens Photoshop's Layer Style on the glass: solid or gradient strokes, inner/outer glow,
-    extra drop shadows. Stack as many as you like; they follow the glass shape live.</div>`;
+    <div class="help">Opens Photoshop's Layer Style on your shape: solid or gradient strokes, inner/outer glow,
+    extra drop shadows. Stack as many as you like; they follow the shape live.</div>`;
   row.querySelector("#effects").addEventListener("click", editEffects);
   return row;
 }
@@ -584,7 +624,7 @@ function buildUI() {
     sec.className = "section";
     const head = document.createElement("div");
     head.className = "shead";
-    head.innerHTML = `<span class="stitle">${s.title}</span>`;
+    head.innerHTML = `<span class="dot"></span><span class="stitle">${s.title}</span>`;
     const body = document.createElement("div");
     if (s.toggle !== undefined) {
       body.id = "b" + s.toggle;
@@ -606,7 +646,44 @@ function buildUI() {
   }
   $("make").addEventListener("click", makeGlass);
   $("refresh").addEventListener("click", () => run("Update Liquid Glass"));
+  buildBrand();
   showParams();
+}
+
+// Brand: logo (logo.png in the plugin folder, else the monogram), version, About page and links.
+const LINKS = {
+  linkedin: "", // set to the profile URL; the button stays hidden while empty
+  github: "https://github.com/CGSudo/sudo-liquid-glass",
+  issues: "https://github.com/CGSudo/sudo-liquid-glass/issues",
+};
+function buildBrand() {
+  const fs = require("fs");
+  try {
+    fs.readFileSync("plugin:/logo.png");
+    for (const id of ["mark", "aboutMark"]) $(id).innerHTML = `<img src="logo.png" alt="">`;
+  } catch (e) { /* no logo shipped: keep the monogram */ }
+  try {
+    const v = "v" + JSON.parse(fs.readFileSync("plugin:/manifest.json", { encoding: "utf-8" })).version;
+    $("version").textContent = v;
+    $("footVersion").textContent = v;
+  } catch (e) { /* version is cosmetic */ }
+  const about = (on) => {
+    $("about").style.display = on ? "block" : "none";
+    $("params").style.display = on ? "none" : "block";
+    $("tabs").style.display = on ? "none" : "flex";
+  };
+  $("infoBtn").addEventListener("click", () => about($("about").style.display === "none"));
+  $("credit").addEventListener("click", () => about(true));
+  $("back").addEventListener("click", () => about(false));
+  for (const key of Object.keys(LINKS)) {
+    const el = $(key);
+    if (!LINKS[key]) {
+      el.style.display = "none";
+      continue;
+    }
+    // Opens in the user's browser; Photoshop asks once for permission (manifest: launchProcess https).
+    el.addEventListener("click", () => require("uxp").shell.openExternal(LINKS[key]).catch((e) => status("Couldn't open the link: " + describe(e))));
+  }
 }
 
 buildUI();
