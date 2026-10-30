@@ -3,7 +3,7 @@
   "private": true,
   "description": "Dev tooling only: the plugin itself has no npm dependencies.",
   "scripts": {
-    "test": "cargo test -p glass_core && node photoshop/engine.test.js && node photoshop/paths.test.js && node photoshop/ui.test.js"
+    "test": "cargo test -p glass_core && node photoshop/engine.test.js && node photoshop/paths.test.js && node photoshop/ui.test.js && node illustrator/cep/panel.test.js"
   },
   "devDependencies": {
     "jsdom": "24.1.3"

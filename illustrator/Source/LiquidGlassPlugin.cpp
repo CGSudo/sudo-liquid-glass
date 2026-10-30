@@ -10,7 +10,10 @@
 #include <cstdio>
 #include <algorithm>
 #include <cstdarg>
-#include <share.h>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 const float kDefaults[kParamCount] = { -45, 0.6f, 80, 16, 20, 12, 30, 0.06f, 1.2f, 1, 1, 1, 0, 0.25f, 24, 8, 0, 1.5f, 0, 40, 24, 0.32f, 1.2f, 1.5f, 1, 0, 12, 1, 1, 1,
@@ -363,24 +366,6 @@ static int CountGlass(AIArtHandle art, AILiveEffectHandle effect)
 
 static bool HasGlass(AIArtHandle art, AILiveEffectHandle effect) { return CountGlass(art, effect) > 0; }
 
-// Opens the settings for `art`'s glass, as a double-click in the Appearance panel would. Going through
-// Illustrator keeps undo and the Appearance panel in step; the re-run also re-reads the background.
-static bool EditGlass(AIArtHandle art, AILiveEffectHandle effect)
-{
-	AIStyleParser parser = nullptr;
-	if (sAIArtStyleParser->NewParser(&parser)) return false;
-	AIArtStyleHandle style = nullptr;
-	AIParserLiveEffect e = nullptr;
-	bool hit = FindGlass(parser, art, effect, &style, &e);
-	if (hit) {
-		sAIMatchingArt->DeselectAll(); // the edit applies to everything selected
-		sAIArt->SetArtUserAttr(art, kArtSelected, kArtSelected);
-		sAIArtStyleParser->EditEffectParameters(style, e);
-	}
-	sAIArtStyleParser->DisposeParser(parser);
-	return hit;
-}
-
 // Re-runs every glass in the document, so each one re-reads what is behind it now.
 static void RefreshAll(AILiveEffectHandle effect)
 {
@@ -394,33 +379,35 @@ static void RefreshAll(AILiveEffectHandle effect)
 	sAIDocument->RedrawDocument();
 }
 
-// Diagnostics for bug reports: %APPDATA%\Sudo Liquid Glass\log.txt, restarted when it passes 256 KB.
+// Diagnostics for bug reports, restarted when it passes 256 KB:
+// Windows %APPDATA%\Sudo Liquid Glass\log.txt, macOS ~/Library/Logs/Sudo Liquid Glass.log.
 static void Log(const char* fmt, ...)
 {
-	const char* appdata = getenv("APPDATA");
-	if (!appdata) return;
-	std::string dir = std::string(appdata) + "\\Sudo Liquid Glass", path = dir + "\\log.txt";
-	CreateDirectoryA(dir.c_str(), nullptr);
-	FILE* f = _fsopen(path.c_str(), "ab", _SH_DENYNO); // plain fopen is redefined by the SDK headers
-	if (f && ftell(f) > 256 * 1024) fclose(f), f = _fsopen(path.c_str(), "wb", _SH_DENYNO);
+#ifdef WIN_ENV
+	const char* base = getenv("APPDATA");
+	const char* rel = "/Sudo Liquid Glass/log.txt";
+#else
+	const char* base = getenv("HOME");
+	const char* rel = "/Library/Logs/Sudo Liquid Glass.log";
+#endif
+	if (!base) return;
+	std::error_code ec;
+	std::filesystem::path path = std::filesystem::u8path(std::string(base) + rel);
+	std::filesystem::create_directories(path.parent_path(), ec);
+	bool restart = std::filesystem::exists(path, ec) && std::filesystem::file_size(path, ec) > 256 * 1024;
+	std::ofstream f(path, restart ? std::ios::trunc : std::ios::app);
 	if (!f) return;
-	SYSTEMTIME t;
-	GetLocalTime(&t);
-	fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d  ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+	char when[32], text[512];
+	std::time_t now = std::time(nullptr);
+	std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", std::localtime(&now));
 	va_list a;
 	va_start(a, fmt);
-	vfprintf(f, fmt, a);
+	vsnprintf(text, sizeof text, fmt, a);
 	va_end(a);
-	fputs("\r\n", f);
-	fclose(f);
+	f << when << "  " << text << "\n";
 }
 
-static void Alert(const wchar_t* text, UINT icon = MB_ICONINFORMATION)
-{
-	AIWindowRef parent = nullptr;
-	sAIAppContext->GetPlatformAppWindow(&parent);
-	MessageBoxW(HWND(parent), text, L"Sudo Liquid Glass", icon | MB_OK);
-}
+static void Alert(const char* text) { sAIUser->MessageAlert(ai::UnicodeString::FromUTF8(text)); }
 
 static short ArtType(AIArtHandle a)
 {
@@ -441,21 +428,168 @@ static bool HasImage(AIArtHandle a)
 
 // Why Liquid Glass can't go on `art`, in plain words, or null when it can. `allowed` = copies it may already carry
 // (1 while Illustrator is adding a new one, which can already be in the appearance).
-static const wchar_t* Refusal(AIArtHandle art, AILiveEffectHandle effect, int allowed = 0)
+static const char* Refusal(AIArtHandle art, AILiveEffectHandle effect, int allowed = 0)
 {
 	short t = ArtType(art);
 	if (t == kRasterArt || t == kPlacedArt)
-		return L"This is a pixel image (a photo or other raster). Liquid Glass needs a vector shape or text, because it "
-			L"follows the shape's edge.\n\nTip: draw a shape on top of the image and apply Liquid Glass to the shape. "
-			L"The image shows through the glass.";
+		return "This is a pixel image (a photo or other raster). Liquid Glass needs a vector shape or text, because it "
+			"follows the shape's edge.\n\nTip: draw a shape on top of the image and make the shape glass. "
+			"The image shows through the glass.";
 	if (HasImage(art))
-		return L"This group contains a pixel image. Inside a glass, an image would turn into a hard-edged rectangle "
-			L"of glass.\n\nTip: keep images outside the group, below the glass. They'll show through it.";
+		return "This group contains a pixel image. Inside a glass, an image would turn into a hard-edged rectangle "
+			"of glass.\n\nTip: keep images outside the group, below the glass. They'll show through it.";
 	if (CountGlass(art, effect) > allowed)
-		return L"This object already has Liquid Glass. A second copy would only slow Illustrator down.\n\n"
-			L"To change it: double-click Liquid Glass in the Appearance panel, or use Object > Edit Liquid Glass...";
+		return "This object already has Liquid Glass. A second copy would only slow Illustrator down.\n\n"
+			"Change it in the Sudo Liquid Glass panel instead.";
 	return nullptr;
 }
+
+// Whole selected objects (not the parts of a selected group), top first.
+static std::vector<AIArtHandle> SelectedObjects()
+{
+	std::vector<AIArtHandle> out;
+	AIArtHandle** matches = nullptr;
+	ai::int32 count = 0;
+	if (!sAIMatchingArt->GetSelectedArt(&matches, &count) && matches) {
+		for (ai::int32 i = 0; i < count; i++) {
+			AIArtHandle a = (*matches)[i], parent = nullptr;
+			ASBoolean layer = false;
+			if (!sAIArt->GetArtParent(a, &parent) && parent) sAIArt->IsArtLayerGroup(parent, &layer);
+			if (layer) out.push_back(a);
+		}
+		sAIMdMemory->MdMemoryDisposeHandle((AIMdMemoryHandle)matches);
+	}
+	return out;
+}
+
+// The glass on a selected object, or on a group around a selected part.
+static std::vector<AIArtHandle> SelectedGlasses(AILiveEffectHandle effect)
+{
+	std::vector<AIArtHandle> out;
+	AIArtHandle** matches = nullptr;
+	ai::int32 count = 0;
+	if (!sAIMatchingArt->GetSelectedArt(&matches, &count) && matches) {
+		for (ai::int32 i = 0; i < count; i++)
+			for (AIArtHandle a = (*matches)[i], parent = nullptr; a; a = sAIArt->GetArtParent(a, &parent) ? nullptr : parent)
+				if (HasGlass(a, effect)) {
+					if (std::find(out.begin(), out.end(), a) == out.end()) out.push_back(a);
+					break;
+				}
+		sAIMdMemory->MdMemoryDisposeHandle((AIMdMemoryHandle)matches);
+	}
+	return out;
+}
+
+static bool GlassParams(AIArtHandle art, AILiveEffectHandle effect, float* p)
+{
+	AIStyleParser parser = nullptr;
+	if (sAIArtStyleParser->NewParser(&parser)) return false;
+	AIArtStyleHandle style = nullptr;
+	AIParserLiveEffect e = nullptr;
+	AILiveEffectParameters d = nullptr;
+	bool ok = FindGlass(parser, art, effect, &style, &e) && !sAIArtStyleParser->GetLiveEffectParams(e, &d);
+	if (ok) ReadParams(d, p);
+	sAIArtStyleParser->DisposeParser(parser);
+	return ok;
+}
+
+// New appearance for `art` with the glass settings replaced (one undo step, like any appearance edit).
+static AIErr SetGlassParams(AIArtHandle art, AILiveEffectHandle effect, const float* p)
+{
+	AIStyleParser parser = nullptr;
+	AIErr e = sAIArtStyleParser->NewParser(&parser);
+	if (e) return e;
+	AIArtStyleHandle style = nullptr, next = nullptr;
+	AIParserLiveEffect le = nullptr;
+	AILiveEffectParameters d = nullptr;
+	if (!FindGlass(parser, art, effect, &style, &le)) e = kBadParameterErr;
+	if (!e) e = sAILiveEffect->CreateLiveEffectParameters(&d);
+	if (!e) {
+		WriteParams(d, p);
+		e = sAIArtStyleParser->SetLiveEffectParams(le, d);
+	}
+	if (!e) e = sAIArtStyleParser->CreateNewStyle(parser, &next);
+	if (!e) e = sAIArtStyle->SetArtStyle(art, next);
+	if (d) sAIDictionary->Release(d);
+	sAIArtStyleParser->DisposeParser(parser);
+	return e;
+}
+
+static AIErr ApplyGlass(AIArtHandle art, AILiveEffectHandle effect, const float* p)
+{
+	AILiveEffectParameters d = nullptr;
+	AIErr e = sAILiveEffect->CreateLiveEffectParameters(&d);
+	if (e) return e;
+	WriteParams(d, p);
+	AIStyleParser parser = nullptr;
+	AIArtStyleHandle style = nullptr, glassy = nullptr;
+	AIParserLiveEffect le = nullptr;
+	e = sAIArtStyleParser->NewParser(&parser);
+	if (!e) e = sAIArtStyle->GetArtStyle(art, &style);
+	if (!e) e = sAIArtStyleParser->ParseStyle(parser, style);
+	if (!e) e = sAIArtStyleParser->NewParserLiveEffect(effect, d, &le);
+	if (!e) e = sAIArtStyleParser->InsertNthPostEffect(parser, sAIArtStyleParser->CountPostEffects(parser), le);
+	if (!e) e = sAIArtStyleParser->CreateNewStyle(parser, &glassy);
+	if (!e) e = sAIArtStyle->SetArtStyle(art, glassy);
+	if (parser) sAIArtStyleParser->DisposeParser(parser);
+	sAIDictionary->Release(d);
+	return e;
+}
+
+// "1,2,3" from the panel -> exactly kParamCount finite numbers, or false.
+static bool ParseCsv(const std::string& s, float* out)
+{
+	const char* c = s.c_str();
+	for (int i = 0; i < kParamCount; i++) {
+		char* end = nullptr;
+		double v = strtod(c, &end);
+		if (end == c || !std::isfinite(v) || std::fabs(v) > 1e6) return false;
+		out[i] = float(v);
+		c = end;
+		if (i < kParamCount - 1 && *c++ != ',') return false;
+	}
+	return *c == 0;
+}
+
+static void WarnIfCMYK()
+{
+	ai::int16 model = 0;
+	static bool warned = false;
+	if (!warned && !sAIDocument->GetDocumentColorModel(&model) && model == kDocCMYKColor) {
+		warned = true;
+		Alert("This is a CMYK document. Liquid Glass is worked out in RGB, so its colours can shift a little when "
+			"printed. For screen work, use an RGB document (File > Document Color Mode > RGB).");
+	}
+}
+
+// Rim width and blur scale with the selection's short side (25% and 6%), so big shapes look like small ones.
+static void AutoSize(float* p)
+{
+	AIArtHandle** matches = nullptr;
+	ai::int32 count = 0;
+	if (!sAIMatchingArt->GetSelectedArt(&matches, &count) && matches) {
+		AIRealRect u{};
+		for (ai::int32 i = 0; i < count; i++) {
+			AIRealRect b;
+			if (sAIArt->GetArtBounds((*matches)[i], &b)) continue;
+			if (!i) u = b;
+			else {
+				u.left = std::min(u.left, b.left);
+				u.right = std::max(u.right, b.right);
+				u.top = std::max(u.top, b.top);
+				u.bottom = std::min(u.bottom, b.bottom);
+			}
+		}
+		float s = float(std::min(u.right - u.left, u.top - u.bottom));
+		if (count) {
+			p[kDepth] = std::round(std::min(200.f, std::max(8.f, 0.25f * s)));
+			if (p[kFrost] > 0) p[kFrost] = std::round(std::min(200.f, std::max(8.f, 0.06f * s)));
+		}
+		sAIMdMemory->MdMemoryDisposeHandle((AIMdMemoryHandle)matches);
+	}
+}
+
+static const char* kPanelId = "com.cgsudo.liquidglass.panel"; // = illustrator/cep/CSXS/manifest.xml
 
 class LiquidGlassPlugin : public Plugin {
 public:
@@ -467,7 +601,9 @@ protected:
 	{
 		ASErr error = kNoErr;
 		try {
-			error = Plugin::Message(caller, selector, message);
+			// The panel (CEP) talks to the plug-in through app.sendScriptMessage("LiquidGlass", selector, input).
+			if (!strcmp(caller, kCallerAIScriptMessage)) error = Script(selector, (AIScriptMessage*)message);
+			else error = Plugin::Message(caller, selector, message);
 		} catch (ai::Error& ex) {
 			error = ex;
 		} catch (...) {
@@ -483,7 +619,7 @@ protected:
 		if (e) return e;
 		if (lg_param_count() != kParamCount) return kCantHappenErr; // engine and plug-in built from different versions
 		e = sAINotifier->AddNotifier(message->d.self, "LiquidGlass", kAIDocumentChangedNotifier, &fChanged);
-		AIPlatformAddMenuItemDataUS edit{ kObjectUtilsMenuGroup, ai::UnicodeString("Edit Liquid Glass...") };
+		AIPlatformAddMenuItemDataUS edit{ kObjectUtilsMenuGroup, ai::UnicodeString("Sudo Liquid Glass Panel") };
 		AIPlatformAddMenuItemDataUS refresh{ kObjectUtilsMenuGroup, ai::UnicodeString("Refresh All Liquid Glass") };
 		if (!e) e = sAIMenu->AddMenuItem(message->d.self, "LiquidGlassEdit", &edit, kMenuItemNoOptions, &fEditItem);
 		if (!e) e = sAIMenu->AddMenuItem(message->d.self, "LiquidGlassRefresh", &refresh, kMenuItemNoOptions, &fRefreshItem);
@@ -501,7 +637,7 @@ protected:
 		if (e) return e;
 		AddLiveEffectMenuData menu;
 		menu.category = (char*)"Stylize";
-		menu.title = (char*)"Liquid Glass...";
+		menu.title = (char*)"Liquid Glass";
 		menu.options = 0;
 		AIMenuItemHandle item = nullptr;
 		e = sAILiveEffect->AddLiveEffectMenuItem(fEffect, "LiquidGlass", &menu, &item, nullptr);
@@ -517,125 +653,121 @@ protected:
 		return Plugin::Notify(msg);
 	}
 
-	AIArtHandle SelectedGlass()
-	{
-		AIArtHandle** matches = nullptr;
-		ai::int32 count = 0;
-		AIArtHandle glass = nullptr;
-		if (!sAIMatchingArt->GetSelectedArt(&matches, &count) && matches) {
-			for (ai::int32 i = 0; i < count && !glass; i++)
-				for (AIArtHandle a = (*matches)[i], parent = nullptr; a && !glass; a = sAIArt->GetArtParent(a, &parent) ? nullptr : parent)
-					if (HasGlass(a, fEffect)) glass = a;
-			sAIMdMemory->MdMemoryDisposeHandle((AIMdMemoryHandle)matches);
-		}
-		return glass;
-	}
-
 	ASErr GoMenuItem(AIMenuMessage* msg) override
 	{
-		if (msg->menuItem == fRefreshItem) {
-			RefreshAll(fEffect);
-		} else if (msg->menuItem == fEditItem) {
-			if (AIArtHandle glass = SelectedGlass()) EditGlass(glass, fEffect);
-			else Alert(L"Select an object that has Liquid Glass first.\n\nTo add it: Effect > Stylize > Liquid Glass...");
-		}
+		if (msg->menuItem == fRefreshItem) RefreshAll(fEffect);
+		else if (msg->menuItem == fEditItem) OpenPanel();
 		return kNoErr;
 	}
 
+	// Effect > Stylize > Liquid Glass applies at once (sized to the shape); settings live in the panel, which opens.
+	// Double-clicking the effect in the Appearance panel opens the panel too.
 	ASErr EditLiveEffectParameters(AILiveEffectEditParamMessage* msg) override
 	{
-		float p[kParamCount], orig[kParamCount];
-		ReadParams(msg->parameters, p);
-		if (msg->isNewInstance) {
-			// Applying from the Effect menu: stop the things that can't work, with the reason.
-			AIArtHandle** matches = nullptr;
-			ai::int32 count = 0;
-			const wchar_t* why = nullptr;
-			if (!sAIMatchingArt->GetSelectedArt(&matches, &count) && matches) {
-				for (ai::int32 i = 0; i < count && !why; i++) {
-					AIArtHandle a = (*matches)[i], parent = nullptr;
-					ASBoolean layer = false;
-					if (!sAIArt->GetArtParent(a, &parent) && parent) sAIArt->IsArtLayerGroup(parent, &layer);
-					if (layer) why = Refusal(a, fEffect, 1); // whole objects only, not the parts of a selected group
-				}
-				sAIMdMemory->MdMemoryDisposeHandle((AIMdMemoryHandle)matches);
-			}
-			if (why) {
+		if (!msg->isNewInstance) {
+			OpenPanel();
+			return kCanceledErr; // nothing changed here; the panel edits the glass
+		}
+		for (AIArtHandle a : SelectedObjects())
+			if (const char* why = Refusal(a, fEffect, 1)) {
 				Log("apply refused");
 				Alert(why);
 				return kCanceledErr;
 			}
-			ai::int16 model = 0;
-			static bool warned = false;
-			if (!warned && !sAIDocument->GetDocumentColorModel(&model) && model == kDocCMYKColor) {
-				warned = true;
-				Alert(L"This is a CMYK document. Liquid Glass is worked out in RGB, so its colours can shift a little "
-					L"when printed. For screen work, use an RGB document (File > Document Color Mode > RGB).",
-					MB_ICONWARNING);
-			}
-			AutoSize(p);
-		}
-		memcpy(orig, p, sizeof p);
-		AIDocumentSetup setup;
-		float docW = sAIDocument->GetDocumentSetup(&setup) ? 612.f : float(setup.width);
-		DialogHost host;
-		AIWindowRef parent = nullptr;
-		sAIAppContext->GetPlatformAppWindow(&parent);
-		host.parent = parent;
-		host.docWidthPt = docW;
-		host.allowPreview = msg->allowPreview != 0;
-		host.ctx = msg;
-		host.preview = [](const float* q, void* c) {
-			auto m = (AILiveEffectEditParamMessage*)c;
-			WriteParams(m->parameters, q);
-			sAILiveEffect->UpdateParameters(m->context);
-			sAIDocument->RedrawDocument();
-		};
-		// A changing counter makes the parameters differ, so Illustrator re-runs the effect even with the same settings.
-		host.refresh = [](const float* q, void* c) {
-			static ai::int32 seq = 0;
-			auto m = (AILiveEffectEditParamMessage*)c;
-			WriteParams(m->parameters, q);
-			sAIDictionary->SetIntegerEntry(m->parameters, sAIDictionary->Key("lgRefresh"), ++seq);
-			sAILiveEffect->UpdateParameters(m->context);
-			sAIDocument->RedrawDocument();
-		};
-		bool ok = RunDialog(p, host);
-		WriteParams(msg->parameters, ok ? p : orig);
-		sAILiveEffect->UpdateParameters(msg->context);
-		return ok ? kNoErr : kCanceledErr;
+		WarnIfCMYK();
+		float p[kParamCount];
+		ReadParams(msg->parameters, p);
+		AutoSize(p);
+		WriteParams(msg->parameters, p);
+		OpenPanel();
+		return kNoErr;
 	}
 
 private:
 	AILiveEffectHandle fEffect = nullptr;
 	AINotifierHandle fChanged = nullptr;
 	AIMenuItemHandle fEditItem = nullptr, fRefreshItem = nullptr;
+	SDKPlugPlug fPlugPlug;
+	bool fPlugPlugLoaded = false;
 
-	// Rim width and blur scale with the selection's short side (25% and 6%), so big shapes look like small ones.
-	static void AutoSize(float* p)
+	void OpenPanel()
 	{
-		AIArtHandle** matches = nullptr;
-		ai::int32 count = 0;
-		if (!sAIMatchingArt->GetSelectedArt(&matches, &count) && matches) {
-			AIRealRect u{};
-			for (ai::int32 i = 0; i < count; i++) {
-				AIRealRect b;
-				if (sAIArt->GetArtBounds((*matches)[i], &b)) continue;
-				if (!i) u = b;
-				else {
-					u.left = std::min(u.left, b.left);
-					u.right = std::max(u.right, b.right);
-					u.top = std::max(u.top, b.top);
-					u.bottom = std::min(u.bottom, b.bottom);
-				}
-			}
-			float s = float(std::min(u.right - u.left, u.top - u.bottom));
-			if (count) {
-				p[kDepth] = std::round(std::min(200.f, std::max(8.f, 0.25f * s)));
-				if (p[kFrost] > 0) p[kFrost] = std::round(std::min(200.f, std::max(8.f, 0.06f * s)));
-			}
-			sAIMdMemory->MdMemoryDisposeHandle((AIMdMemoryHandle)matches);
+		if (!fPlugPlugLoaded) fPlugPlugLoaded = !fPlugPlug.Load(sAIFolders);
+		int e = fPlugPlugLoaded ? int(fPlugPlug.LoadExtension(kPanelId)) : -1;
+		Log("open panel (result %d)", e);
+		if (e) Alert("The Sudo Liquid Glass panel isn't installed. Install SudoLiquidGlassPanel.zxp from the download, "
+			"then open it from Window > Extensions > Sudo Liquid Glass.");
+	}
+
+	ASErr Script(const char* sel, AIScriptMessage* m)
+	{
+		std::string in = m->inParam.as_UTF8(), out;
+		float p[kParamCount];
+		if (!strcmp(sel, "state")) out = State();
+		else if (!strcmp(sel, "apply")) out = ParseCsv(in, p) ? Apply(p) : "Those settings weren't readable.";
+		else if (!strcmp(sel, "make")) out = ParseCsv(in, p) ? Make(p) : "Those settings weren't readable.";
+		else if (!strcmp(sel, "refresh")) {
+			RefreshAll(fEffect);
+			out = "Every glass re-read what's behind it.";
 		}
+		m->outParam = ai::UnicodeString::FromUTF8(out);
+		return kNoErr;
+	}
+
+	// For the panel: {"doc":0|1,"n":selected objects,"glass":glasses selected,"w":doc width pt,"p":[settings]|null}.
+	std::string State()
+	{
+		AIDocumentHandle doc = nullptr;
+		if (sAIDocument->GetDocument(&doc) || !doc) return "{\"doc\":0}";
+		AIDocumentSetup setup;
+		float w = sAIDocument->GetDocumentSetup(&setup) ? 612.f : float(setup.width);
+		std::vector<AIArtHandle> glasses = SelectedGlasses(fEffect);
+		std::ostringstream o;
+		o << "{\"doc\":1,\"n\":" << SelectedObjects().size() << ",\"glass\":" << glasses.size() << ",\"w\":" << w << ",\"p\":";
+		float p[kParamCount];
+		if (!glasses.empty() && GlassParams(glasses[0], fEffect, p)) {
+			o << "[";
+			for (int i = 0; i < kParamCount; i++) o << (i ? "," : "") << p[i];
+			o << "]";
+		} else o << "null";
+		o << "}";
+		return o.str();
+	}
+
+	std::string Apply(const float* p)
+	{
+		std::vector<AIArtHandle> glasses = SelectedGlasses(fEffect);
+		if (glasses.empty()) return "";
+		sAIUndo->SetUndoTextUS(ai::UnicodeString("Undo Liquid Glass"), ai::UnicodeString("Redo Liquid Glass"));
+		for (AIArtHandle g : glasses) SetGlassParams(g, fEffect, p);
+		return "";
+	}
+
+	// Make Glass: the selected objects become one glass (several objects are grouped first, so they melt together).
+	std::string Make(const float* settings)
+	{
+		std::vector<AIArtHandle> sel = SelectedObjects();
+		if (sel.empty()) return "Select a shape, group or text first.";
+		for (AIArtHandle a : sel)
+			if (const char* why = Refusal(a, fEffect)) return why;
+		WarnIfCMYK();
+		float p[kParamCount];
+		memcpy(p, settings, sizeof p);
+		AutoSize(p);
+		AIArtHandle target = sel[0];
+		if (sel.size() > 1) {
+			AIErr e = sAIArt->NewArt(kGroupArt, kPlaceAbove, sel[0], &target);
+			for (AIArtHandle a : sel)
+				if (!e) e = sAIArt->ReorderArt(a, kPlaceInsideOnBottom, target);
+			if (e) return "Couldn't group the selected objects.";
+		}
+		sAIUndo->SetUndoTextUS(ai::UnicodeString("Undo Make Glass"), ai::UnicodeString("Redo Make Glass"));
+		AIErr e = ApplyGlass(target, fEffect, p);
+		Log("make glass from %d objects (error %d)", int(sel.size()), int(e));
+		if (e) return "Illustrator didn't accept the glass on this object.";
+		sAIMatchingArt->DeselectAll();
+		sAIArt->SetArtUserAttr(target, kArtSelected, kArtSelected);
+		return sel.size() > 1 ? "Done: the objects are grouped and melt together as one glass." : "Done.";
 	}
 };
 

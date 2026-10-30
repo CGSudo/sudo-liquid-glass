@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sudo Liquid Glass panel for Illustrator: Window > Extensions > Sudo Liquid Glass. The panel id is opened by the
+     LiquidGlass plug-in (kPanelId in illustrator/Source/LiquidGlassPlugin.cpp). -->
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.cgsudo.liquidglass" ExtensionBundleVersion="0.8.0" ExtensionBundleName="Sudo Liquid Glass for Illustrator"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.cgsudo.liquidglass.panel" Version="0.8.0"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="ILST" Version="[25.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="9.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.cgsudo.liquidglass.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./host.jsx</ScriptPath>
+          <CEFCommandLine/>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Sudo Liquid Glass</Menu>
+          <Geometry>
+            <Size><Height>760</Height><Width>360</Width></Size>
+            <MinSize><Height>480</Height><Width>320</Width></MinSize>
+            <MaxSize><Height>2000</Height><Width>900</Width></MaxSize>
+          </Geometry>
+          <Icons>
+            <Icon Type="Normal">./icon-light.png</Icon>
+            <Icon Type="RollOver">./icon-light.png</Icon>
+            <Icon Type="DarkNormal">./icon-dark.png</Icon>
+            <Icon Type="DarkRollOver">./icon-dark.png</Icon>
+          </Icons>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>

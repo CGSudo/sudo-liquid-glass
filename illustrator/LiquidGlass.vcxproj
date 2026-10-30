@@ -30,7 +30,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>Source;$(AISDK)\samplecode\common\includes;$(AISDK)\samplecode\common\win;$(AISDK)\illustratorapi\ate;$(AISDK)\illustratorapi\illustrator;$(AISDK)\illustratorapi\illustrator\actions;$(AISDK)\illustratorapi\pica_sp;$(AISDK)\illustratorapi\illustrator\legacy;$(WV2)\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>Source;$(AISDK)\samplecode\common\includes;$(AISDK)\samplecode\common\win;$(AISDK)\illustratorapi\ate;$(AISDK)\illustratorapi\illustrator;$(AISDK)\illustratorapi\illustrator\actions;$(AISDK)\illustratorapi\pica_sp;$(AISDK)\illustratorapi\illustrator\legacy;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;WIN_ENV;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <ForcedIncludeFiles>pragma.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
@@ -45,20 +45,21 @@
     </ResourceCompile>
     <Link>
       <ModuleDefinitionFile>$(AISDK)\samplecode\common\win\PluginMain.def</ModuleDefinitionFile>
-      <AdditionalDependencies>$(ProjectDir)..\target\release\glass_core.lib;comctl32.lib;ntdll.lib;userenv.lib;ws2_32.lib;dbghelp.lib;dwmapi.lib;shell32.lib;ole32.lib;$(WV2)\build\native\x64\WebView2LoaderStatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(ProjectDir)..\target\release\glass_core.lib;ntdll.lib;userenv.lib;ws2_32.lib;dbghelp.lib;bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <SubSystem>Windows</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source\LiquidGlassPlugin.cpp" />
-    <ClCompile Include="Source\LiquidGlassDialog.cpp" />
     <ClCompile Include="Source\LiquidGlassSuites.cpp" />
     <ClCompile Include="$(AISDK)\samplecode\common\source\AppContext.cpp" />
     <ClCompile Include="$(AISDK)\samplecode\common\source\IllustratorSDK.cpp" />
     <ClCompile Include="$(AISDK)\samplecode\common\source\Main.cpp" />
     <ClCompile Include="$(AISDK)\samplecode\common\source\Plugin.cpp" />
     <ClCompile Include="$(AISDK)\samplecode\common\source\Suites.cpp" />
+    <ClCompile Include="$(AISDK)\samplecode\common\source\SDKPlugPlug.cpp" />
     <ClCompile Include="$(AISDK)\illustratorapi\illustrator\IAIUnicodeString.cpp" />
+    <ClCompile Include="$(AISDK)\illustratorapi\illustrator\IAIFilePath.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="LiquidGlass.rc" />

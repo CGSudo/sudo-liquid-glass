@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- Sudo Liquid Glass settings panel for Illustrator. Hosted in WebView2 by LiquidGlassDialog.cpp, which calls
-     init() and receives chrome.webview.postMessage strings: "params:<csv>", "preview-off:<csv>", "ok:<csv>", "cancel",
-     "refresh:<csv>", "presets:<json>", "link:<url>". Opened in a normal browser it runs in demo mode. -->
+<!-- Sudo Liquid Glass panel for Illustrator (CEP extension, Window > Extensions > Sudo Liquid Glass; Windows and macOS).
+     It talks to the LiquidGlass plug-in through host.jsx: lg("state" | "apply" | "make" | "refresh", input).
+     Opened in a normal browser (no CEP) it runs in demo mode. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -18,7 +18,7 @@
     font: 12px/1.35 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; overflow: hidden; }
   /* Every block has a fixed height except the settings list, which scrolls: nothing jumps while you work. */
   body { display: flex; flex-direction: column; }
-  header, .presets, .quick, nav, .help, footer { flex: none; }
+  header, .actions, .presets, .quick, nav, .help { flex: none; }
   button { font: inherit; color: inherit; cursor: pointer; }
   svg.i { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.35;
     stroke-linecap: round; stroke-linejoin: round; }
@@ -126,6 +126,14 @@
     display: flex; gap: 8px; align-items: flex-start; }
   .help span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .help svg.i { margin-top: 1px; color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; }
+  .actions .make { flex: 1; height: 34px; font-size: 13px; }
+  .actions .make:disabled { opacity: 0.45; cursor: default; }
+  .status { margin: 6px 14px 0; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--dim); font-size: 11px; }
+  .status b { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+  .status.glass b { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   footer { display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 14px; border-top: 1px solid var(--line); background: var(--panel); }
   .btn { border: 1px solid var(--line); background: var(--raise); height: 30px; padding: 0 12px; border-radius: 8px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .btn:hover { border-color: rgba(255, 255, 255, 0.2); }
@@ -137,7 +145,7 @@
 </head>
 <body>
 <header>
-  <img id="logo" src="{{LOGO}}" alt="SUDO">
+  <img id="logo" src="logo.png" alt="SUDO">
   <div>
     <div class="title">Sudo Liquid Glass</div>
     <div class="by" id="by" data-help="Made by CGSudo. Click to open LinkedIn.">by CGSudo · LinkedIn ↗</div>
@@ -145,6 +153,11 @@
   <span class="ver" id="ver">v0.7.0</span>
 </header>
 
+<div class="actions">
+  <button class="btn primary make" id="make" data-help="Turns the selected shapes, groups or text into live glass, with the settings below. Several objects are grouped and melt together.">Make Glass</button>
+  <button class="btn" id="refresh" data-help="Re-reads the artwork behind every glass and redraws it now."></button>
+</div>
+<div class="status" id="status"><b></b><span id="statusText">Starting…</span></div>
 <div class="presets">
   <div class="label-row">
     <h2 data-icon="presets">Looks</h2>
@@ -170,16 +183,7 @@
 <nav id="tabs"></nav>
 <main id="params"></main>
 <div class="help"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.9v.1"/></svg><span id="help"></span></div>
-<footer>
-  <button class="btn" id="refresh" data-help="Re-reads the artwork behind the glass and redraws it now.">
-    <svg class="i" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>Refresh</button>
-  <label class="check" data-help="Show your changes on the artboard while you edit."><span class="switch"><input type="checkbox" id="preview" checked><i></i></span>Preview</label>
-  <span class="grow"></span>
-  <button class="btn" id="cancel">Cancel</button>
-  <button class="btn primary" id="ok">OK</button>
-</footer>
-
-<script src="../../photoshop/looks.js"></script>
+<script src="looks.js"></script>
 <script>
 "use strict";
 // Defaults, looks and icons are shared with Photoshop (photoshop/looks.js). Lengths are in points here.
@@ -259,8 +263,11 @@ const GRADIENT_ONLY = [33, 35, 39]; // rows shown only while the stroke fill is 
 const IDLE_HELP = "Hover over any setting to see what it does.";
 
 const $ = (id) => document.getElementById(id);
-const host = window.chrome && window.chrome.webview;
-const send = (s) => host && host.postMessage(s);
+// CEP's built-in bridge; host.jsx defines lg(). No CEP (a browser) = demo mode.
+const cep = window.__adobe_cep__;
+const call = (sel, input) => new Promise((done) => (cep ? cep.evalScript(`lg(${JSON.stringify(sel)}, ${JSON.stringify(input || "")})`, done) : done("")));
+const LOOKS_KEY = "sudoLiquidGlass.looks";
+let glassSelected = false, lastEdit = 0, sending = false, dirty = false;
 let params = DEFAULTS.slice(), userPresets = [], docWidth = 612, active = "Liquid Glass";
 const refresh = []; // functions that push params into the controls
 const sync = () => refresh.forEach((f) => f());
@@ -273,7 +280,8 @@ function changed() {
   active = "";
   markPreset();
   clearTimeout(timer);
-  timer = setTimeout(() => $("preview").checked && send("params:" + params.join(",")), 60);
+  lastEdit = Date.now();
+  timer = setTimeout(push, 80);
 }
 function set(i, v) {
   params[i] = v;
@@ -540,8 +548,59 @@ function markPreset() {
   for (const c of $("strip").children) c.classList.toggle("on", !!active && c.dataset.name === active);
 }
 
+// Live edit: the selected glass follows every change. One request at a time; the newest settings win.
+async function push() {
+  if (!glassSelected) return;
+  if (sending) return void (dirty = true);
+  sending = true;
+  await call("apply", params.join(","));
+  sending = false;
+  if (dirty) (dirty = false), push();
+}
+
+function setStatus(text, glass) {
+  $("statusText").textContent = text;
+  $("status").classList.toggle("glass", !!glass);
+}
+
+// Every half second: what's selected in Illustrator. A selected glass loads its settings into the panel.
+async function poll() {
+  const raw = await call("state");
+  let s = null;
+  try {
+    s = JSON.parse(raw);
+  } catch (e) {
+    s = null;
+  }
+  if (!cep) return setStatus("Demo mode: open this panel inside Illustrator.");
+  if (!s) return setStatus("The Liquid Glass plug-in isn't loaded. Reinstall it, then restart Illustrator.");
+  if (!s.doc) {
+    glassSelected = false;
+    $("make").disabled = true;
+    return setStatus("Open or create a document to start.");
+  }
+  docWidth = s.w || docWidth;
+  glassSelected = s.glass > 0;
+  $("make").disabled = s.n === 0 || (glassSelected && s.n === s.glass);
+  if (glassSelected) {
+    setStatus(s.glass > 1 ? `Editing ${s.glass} selected glasses: changes apply to all of them.` : "Editing the selected glass: changes show live.", true);
+    // Don't overwrite what the user is dragging right now.
+    if (Array.isArray(s.p) && Date.now() - lastEdit > 1200 && !sending && s.p.some((v, i) => Math.abs(v - params[i]) > 1e-3)) {
+      params = pad(s.p) || params;
+      active = lookOf(params, BUILTIN.concat(userPresets));
+      sync();
+      markPreset();
+    }
+  } else if (s.n > 0) setStatus(`${s.n} object${s.n > 1 ? "s" : ""} selected: click Make Glass.`);
+  else setStatus("Select a shape, group or text, then click Make Glass.");
+}
+
 function savePresets() {
-  send("presets:" + JSON.stringify(userPresets));
+  try {
+    localStorage.setItem(LOOKS_KEY, JSON.stringify(userPresets));
+  } catch (e) {
+    $("help").textContent = "Couldn't save your looks: " + e.message;
+  }
   drawPresets();
 }
 
@@ -571,17 +630,13 @@ function init(values, presetsJson, opts) {
   }
   docWidth = (opts && opts.docWidth) || docWidth;
   if (opts && opts.version) $("ver").textContent = "v" + opts.version;
-  if (opts && opts.allowPreview === false) {
-    $("preview").checked = false;
-    $("preview").disabled = true;
-  }
   active = lookOf(params, BUILTIN.concat(userPresets));
   sync();
   drawPresets();
 }
 
 build();
-$("by").addEventListener("click", () => (host ? send("link:" + LINKEDIN) : window.open(LINKEDIN)));
+$("by").addEventListener("click", () => (window.cep ? window.cep.util.openURLInDefaultBrowser(LINKEDIN) : window.open(LINKEDIN)));
 $("reset").addEventListener("click", () => $("strip").children[0].click());
 $("prev").innerHTML = icon("left");
 $("next").innerHTML = icon("right");
@@ -596,16 +651,21 @@ $("saveName").addEventListener("keydown", (e) => {
   if (e.key === "Enter") saveCurrent();
   if (e.key === "Escape") e.stopPropagation(), $("save").classList.remove("open");
 });
-$("refresh").addEventListener("click", () => send("refresh:" + params.join(",")));
-$("preview").addEventListener("change", () => send(($("preview").checked ? "params:" : "preview-off:") + params.join(",")));
-$("ok").addEventListener("click", () => send("ok:" + params.join(",")));
-$("cancel").addEventListener("click", () => send("cancel"));
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("save").classList.contains("open")) send("cancel");
-  if (e.key === "Enter" && e.target.tagName !== "INPUT" && e.target.tagName !== "BUTTON") send("ok:" + params.join(","));
+$("refresh").innerHTML = '<svg class="i" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>';
+$("refresh").addEventListener("click", async () => setStatus(await call("refresh")));
+$("make").addEventListener("click", async () => {
+  $("make").disabled = true;
+  const msg = await call("make", params.join(","));
+  if (msg) setStatus(msg, msg.startsWith("Done"));
+  setTimeout(poll, 300);
 });
-if ($("logo").getAttribute("src").startsWith("{{")) $("logo").src = "../../photoshop/logo.png"; // demo mode in a browser
-if (!host) init(DEFAULTS, "[]", {});
+let saved = "[]";
+try {
+  saved = localStorage.getItem(LOOKS_KEY) || "[]";
+} catch (e) { /* no storage: start with the built-in looks */ }
+init(DEFAULTS, saved, {});
+poll();
+setInterval(poll, 500);
 </script>
 </body>
 </html>

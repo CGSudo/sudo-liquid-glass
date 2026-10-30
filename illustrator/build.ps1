@@ -1,9 +1,10 @@
-# Builds LiquidGlass.aip (Illustrator Live Effect) and installs it into Illustrator's Plug-ins folder.
-#   powershell -ExecutionPolicy Bypass -File build.ps1 [-SDK <unzipped Illustrator SDK>] [-NoInstall]
+# Builds the Illustrator plug-in (build\LiquidGlass.aip) and the panel (build\SudoLiquidGlassPanel.zxp), then installs both.
+#   powershell -ExecutionPolicy Bypass -File build.ps1 [-SDK <unzipped Illustrator SDK>] [-ZXPSignCmd <path>] [-NoInstall]
+# ZXPSignCmd: github.com/Adobe-CEP/CEP-Resources (ZXPSignCMD/4.1.3/x64). The panel is signed with a fresh self-signed
+# certificate each build, so no signing secret is stored anywhere.
 param(
     [string]$SDK = "E:\AI\SDK\AI_2026_SDK_Win\Adobe Illustrator 2026 SDK",
-    # Unpacked Microsoft.Web.WebView2 NuGet package (nuget.org/packages/Microsoft.Web.WebView2).
-    [string]$WebView2 = "E:\AI\SDK\webview2\pkg",
+    [string]$ZXPSignCmd = "E:\AI\SDK\zxpsign\ZXPSignCmd.exe",
     [switch]$NoInstall
 )
 $ErrorActionPreference = "Stop"
@@ -28,29 +29,38 @@ function New-Pipl($name, $out) {
 }
 New-Pipl "LiquidGlass" (Join-Path $here "plugin.pipl")
 
-# Settings panel with the SUDO logo inlined (.NET byte I/O: PowerShell 5.1 text cmdlets corrupt UTF-8).
-$logo = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $here "..\photoshop\logo.png")))
-$looks = [IO.File]::ReadAllText((Join-Path $here "..\photoshop\looks.js"), [Text.Encoding]::UTF8) # looks and icons shared with Photoshop
-$html = [IO.File]::ReadAllText((Join-Path $here "ui\panel.html"), [Text.Encoding]::UTF8).Replace("{{LOGO}}", "data:image/png;base64,$logo").Replace(
-    '<script src="../../photoshop/looks.js"></script>', "<script>`n$looks</script>")
-New-Item -ItemType Directory -Force (Join-Path $here "build") | Out-Null
-[IO.File]::WriteAllText((Join-Path $here "build\panel.html"), $html, (New-Object Text.UTF8Encoding $false))
-
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
 $toolset = if ((& $vswhere -latest -products * -property catalog_productLineVersion) -ge 2022) { "v143" } else { "v142" }
 $winsdk = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Include" -Directory | Sort-Object Name | Select-Object -Last 1).Name
 & $msbuild (Join-Path $here "LiquidGlass.vcxproj") /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=$toolset `
-    /p:WindowsTargetPlatformVersion=$winsdk "/p:AISDK=$SDK" "/p:WV2=$WebView2" /m /v:m /nologo
+    /p:WindowsTargetPlatformVersion=$winsdk "/p:AISDK=$SDK" /m /v:m /nologo
 if ($LASTEXITCODE) { throw "msbuild failed" }
 $aip = Join-Path $here "build\LiquidGlass.aip"
 Write-Host "Built $aip"
+
+# Panel: stage (shared looks + logo), then sign as a .zxp.
+$stage = Join-Path $here "build\cep"
+node (Join-Path $here "cep\stage.js") $stage
+if ($LASTEXITCODE) { throw "panel staging failed" }
+$zxp = Join-Path $here "build\SudoLiquidGlassPanel.zxp"
+$cert = Join-Path $here "build\cert.p12"
+$pass = [Guid]::NewGuid().ToString("N")
+Remove-Item -Force -ErrorAction SilentlyContinue $zxp, $cert
+& $ZXPSignCmd -selfSignedCert US CA CGSudo "Sudo Liquid Glass" $pass $cert | Out-Null
+& $ZXPSignCmd -sign $stage $zxp $cert $pass | Out-Null
+Remove-Item -Force $cert
+& $ZXPSignCmd -verify $zxp | Out-Null
+if ($LASTEXITCODE) { throw "panel signing failed" }
+Write-Host "Built $zxp"
 if ($NoInstall) { return }
 
-# Program Files needs admin: copy through one elevated process (UAC prompt). Also removes the old
-# File > Scripts prototype, so the Effect menu is the only Liquid Glass in Illustrator.
+# Plug-in: Program Files needs admin, so one elevated copy (UAC prompt). Illustrator must be closed (file lock).
 foreach ($ai in Get-ChildItem "C:\Program Files\Adobe\Adobe Illustrator *" -Directory) {
     $dest = Join-Path $ai.FullName "Plug-ins\Liquid Glass"
-    Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command New-Item -ItemType Directory -Force '$dest' | Out-Null; Copy-Item -LiteralPath '$aip' -Destination '$dest' -Force; Remove-Item -Force -ErrorAction SilentlyContinue '$($ai.FullName)\Presets\*\Scripts\Liquid Glass.jsx', '$($ai.FullName)\Presets\*\Scripts\lgcli.exe'"
+    Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile -Command New-Item -ItemType Directory -Force '$dest' | Out-Null; Copy-Item -LiteralPath '$aip' -Destination '$dest' -Force"
     Write-Host "Installed -> $dest"
 }
+# Panel: Adobe's own installer (comes with Creative Cloud).
+$upia = "C:\Program Files\Common Files\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe"
+& $upia /install $zxp

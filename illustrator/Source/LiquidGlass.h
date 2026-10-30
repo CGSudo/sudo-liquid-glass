@@ -30,16 +30,22 @@ extern "C" AIMenuSuite* sAIMenu;
 extern "C" AIUnicodeStringSuite* sAIUnicodeString;
 extern "C" SPBlocksSuite* sSPBlocks;
 
-#include "LiquidGlassDialog.h"
 #include "AIArtStyle.h"
 #include "AIArtStyleParser.h"
+#include "AIScriptMessage.h"
+#include "AIUndo.h"
+#include "SDKPlugPlug.h"
 
+constexpr const char* kVersion = "0.8.0";
 
-// Order = glass_core::Params. Lengths (kLengths) are in pt here, px at render.
+// Order = glass_core::Params (photoshop/looks.js DEFAULTS). Lengths (kLengths) are in pt here, px at render.
+constexpr int kParamCount = 42;
+extern const float kDefaults[kParamCount];
 enum { kAngle = 0, kDepth = 3, kFrost = 5, kGrain = 16, kGrainSize = 17, kDim = 18 };
 
 extern "C" AIArtStyleSuite* sAIArtStyle;
 extern "C" AIArtStyleParserSuite* sAIArtStyleParser;
+extern "C" AIUndoSuite* sAIUndo;
 
 
 extern "C" unsigned lg_param_count();

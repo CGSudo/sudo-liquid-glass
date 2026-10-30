@@ -16,6 +16,7 @@ extern "C" {
 	SPBlocksSuite* sSPBlocks = nullptr;
 	AIArtStyleSuite* sAIArtStyle = nullptr;
 	AIArtStyleParserSuite* sAIArtStyleParser = nullptr;
+	AIUndoSuite* sAIUndo = nullptr;
 }
 
 ImportSuite gImportSuites[] = {
@@ -34,5 +35,6 @@ ImportSuite gImportSuites[] = {
 	kSPBlocksSuite, kSPBlocksSuiteVersion, &sSPBlocks,
 	kAIArtStyleSuite, kAIArtStyleVersion, &sAIArtStyle,
 	kAIArtStyleParserSuite, kAIArtStyleParserVersion, &sAIArtStyleParser,
+	kAIUndoSuite, kAIUndoVersion, &sAIUndo,
 	nullptr, 0, nullptr
 };
