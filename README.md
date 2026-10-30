@@ -12,12 +12,11 @@ You know the routine. Merge a copy of the background, blur it, clip it to a shap
 
 **Download:** [latest release](../../releases/latest)
 - **Photoshop** 2023 (v24.2) or newer: `SudoLiquidGlass.ccx`, Windows and macOS (Intel and Apple Silicon).
-- **Illustrator** 2026 on Windows: `LiquidGlass.aip` inside the installer zip.
+- **Illustrator** 2026, Windows and macOS: a plug-in plus a panel (`.zxp`), installed by the installer zip.
 
 > **Honest status:**
 > - Photoshop and Illustrator are tested on Windows.
-> - The Photoshop package has no platform-specific code, but it hasn't been tested on a Mac yet. If you try it, please [open an issue](../../issues).
-> - **Illustrator is Windows only.** A Mac build needs Xcode on a Mac and isn't made yet.
+> - **Mac:** the Photoshop package has no platform-specific code, and the Illustrator plug-in is built for Apple Silicon and Intel on GitHub's Mac machines, but neither has been tried on a real Mac yet. If you try them, please [open an issue](../../issues).
 > - The images here are renders from the plugin's own engine on test shapes, not app screenshots. Real screenshots and a demo video are coming.
 
 ## Why designers switch
@@ -27,7 +26,7 @@ You know the routine. Merge a copy of the background, blur it, clip it to a shap
 - **"I just want the frosted look, fast."** Pick a look (Frosted, Glassmorphism, Ice, Smoked, Crystal, Bubble…), then fine-tune it with four sliders that are always on screen.
 
 ## Features
-- **One click, non-destructive:** works on your shape and text layers (Photoshop) or any shape, group or text as a live effect (Illustrator).
+- **One click, non-destructive:** select your shapes or text and click **Make Glass**, in Photoshop and in Illustrator (a live effect there).
 - **Live updates:** move, resize or reshape the glass, edit the text, or change anything behind it, and the glass re-renders.
 - **Looks:** Liquid Glass, Clear, Frosted, Glassmorphism, Ice, Smoked, Crystal, Bubble and Film frost, each with a preview card. **Save your own looks** and use them in every document.
 - **Quick controls:** Frost, Lens, Edge width and Shine stay on screen, so any look is one drag away from yours.
@@ -48,14 +47,14 @@ You know the routine. Merge a copy of the background, blur it, clip it to a shap
 2. Double-click it. The Creative Cloud desktop app installs the plugin.
 3. Restart Photoshop and open **Plugins › Sudo Liquid Glass**.
 
-**Illustrator (Windows):**
+**Illustrator (Windows and macOS):**
 1. Download `SudoLiquidGlass-…-installer.zip` from the [latest release](../../releases/latest) and unzip it.
-2. Close Illustrator, then double-click **`Install Illustrator on Windows.bat`** and allow it to make changes.
-3. Start Illustrator, select a shape and choose **Effect › Stylize › Liquid Glass…**.
+2. Close Illustrator, then double-click **`Install Illustrator on Windows.bat`** (allow it to make changes) or **`Install Illustrator on Mac.command`** (if macOS blocks it, right-click › Open; it asks for your password). It installs the plug-in and the panel.
+3. Start Illustrator and open **Window › Extensions › Sudo Liquid Glass**.
 
 The same zip has one-click Photoshop installers too: `Install Photoshop on Windows.bat` and `Install Photoshop on Mac.command` (if macOS blocks it, right-click › Open).
 
-**Why `.ccx` and not `.zxp`?** ZXP is the package format for Adobe's older CEP extensions. The Photoshop plugin is a modern UXP plugin, and Adobe packages those as `.ccx`, the same format its own plugin marketplace uses. The Illustrator plugin is a native `.aip` plug-in.
+**`.ccx`, `.zxp` and `.aip`:** the Photoshop plugin is a modern UXP plugin, which Adobe packages as `.ccx`. Illustrator doesn't run UXP plugins yet, so its panel is a CEP extension, packaged as a signed `.zxp`, and the glass itself is a native plug-in (`.aip`).
 
 ## How to use
 **Photoshop**
@@ -75,10 +74,11 @@ The same zip has one-click Photoshop installers too: `Install Photoshop on Windo
 - **Pixel layers** can't become glass. Use a shape or text layer.
 
 **Illustrator**
-1. Select a shape, group or text and choose **Effect › Stylize › Liquid Glass…**.
-2. Pick a look and adjust it in the settings window; **Preview** shows changes on the artboard.
-3. To change it later, double-click **Liquid Glass** in the Appearance panel, or use **Object › Edit Liquid Glass…** (you can give it a shortcut in Edit › Keyboard Shortcuts).
-4. **Object › Refresh All Liquid Glass** re-reads the background of every glass. The glass also refreshes by itself when the art behind it changes.
+1. Open **Window › Extensions › Sudo Liquid Glass**.
+2. Select shapes, a group or text and click **Make Glass**. Several objects are grouped and melt together.
+3. Pick a look and adjust the settings: the selected glass changes live on the artboard. Select any glass to edit it again.
+4. **Effect › Stylize › Liquid Glass** works too, and double-clicking Liquid Glass in the Appearance panel opens the panel.
+5. The glass refreshes by itself when the art behind it changes; **Refresh** in the panel forces it.
 
 Liquid Glass refuses things that can't work and tells you why: pixel images, groups that contain an image, and a second Liquid Glass on the same object.
 
@@ -87,8 +87,7 @@ Without a plugin, you blur a merged copy of the background, clip it to a shape, 
 
 ## Roadmap
 - [x] **Photoshop** (Windows and macOS): available
-- [x] **Illustrator** (Windows): available
-- [ ] **Illustrator for Mac**: planned (needs a Mac build)
+- [x] **Illustrator** (Windows and macOS): available; Mac not yet tried on a real Mac
 - [ ] **After Effects** and **Premiere Pro**: planned, not started
 - [ ] GPU rendering, linear-light blending, light/dark adaptive tint
 
@@ -97,7 +96,7 @@ Without a plugin, you blur a merged copy of the background, clip it to a shape, 
 core/        Rust renderer (glass_core): backdrop + shape masks → glass layer + shadow layer
 photoshop/   UXP plugin: panel, live updates, vector and text outline reader, WebAssembly bridge;
              looks.js (defaults, looks and icons) is shared with Illustrator
-illustrator/ native Live Effect (C++, Illustrator SDK) with a WebView2 settings window
+illustrator/ native Live Effect (C++, Illustrator SDK) + panel (cep/, HTML), Windows and macOS
 installer/   one-click installers shipped in the release zip
 preview/     renders the preview images from test shapes
 docs/        full project history and handoff notes
@@ -123,7 +122,7 @@ cargo build -p glass_core --release --target wasm32-unknown-unknown
 ```
 Package as `dist/SudoLiquidGlass.ccx` and install with `powershell -ExecutionPolicy Bypass -File install.ps1` (Windows) or `sh install.sh` (macOS). Add `-NoInstall` / `--no-install` to only build the package.
 
-**Illustrator (Windows):** needs Visual Studio C++ Build Tools, the [Illustrator SDK](https://developer.adobe.com/console) and the Microsoft.Web.WebView2 NuGet package. See [illustrator/README.md](illustrator/README.md).
+**Illustrator:** Windows needs Visual Studio C++ Build Tools; macOS needs the Xcode command line tools. Both need the [Illustrator SDK](https://developer.adobe.com/console) and Adobe's `ZXPSignCmd`. See [illustrator/README.md](illustrator/README.md); GitHub builds the Mac version for every release.
 
 ## Known limits
 - RGB documents only in Photoshop; Illustrator works in RGB and warns in CMYK documents.

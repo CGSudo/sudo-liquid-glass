@@ -20,8 +20,11 @@ lipo -create "$ROOT/target/aarch64-apple-darwin/release/libglass_core.a" "$ROOT/
   -output "$OBJ/libglass_core.a"
 
 # Plug-in sources + the SDK's shared plug-in code, compiled as Objective-C++ like Adobe's sample projects.
-COMMON="$SDK/samplecode/common"
-API="$SDK/illustratorapi"
+# The SDK folder name has spaces ("Adobe Illustrator 2026 SDK"): reach it through a space-free link for the flags below.
+LINK="$(mktemp -d)/sdk"
+ln -s "$SDK" "$LINK"
+COMMON="$LINK/samplecode/common"
+API="$LINK/illustratorapi"
 SRC="$HERE/Source/LiquidGlassPlugin.cpp $HERE/Source/LiquidGlassSuites.cpp \
   $COMMON/source/AppContext.cpp $COMMON/source/IllustratorSDK.cpp $COMMON/source/Main.cpp $COMMON/source/Plugin.cpp \
   $COMMON/source/Suites.cpp $COMMON/source/SDKPlugPlug.cpp $API/illustrator/IAIUnicodeString.cpp $API/illustrator/IAIFilePath.cpp"
