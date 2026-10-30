@@ -60,6 +60,8 @@ cat > "$B/Info.plist" <<EOF
 </dict></plist>
 EOF
 printf 'ARPIART5' > "$B/PkgInfo"
+# Illustrator calls PluginMain: without it exported the plug-in silently never loads.
+nm -gU "$B/MacOS/LiquidGlass" | grep -q " _PluginMain$" || { echo "PluginMain is not exported"; exit 1; }
 # Ad-hoc signature: Apple Silicon refuses to load unsigned code.
 codesign --force --deep --sign - "$OUT/LiquidGlass.aip"
 lipo -info "$B/MacOS/LiquidGlass"

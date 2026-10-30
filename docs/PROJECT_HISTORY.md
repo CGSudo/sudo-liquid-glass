@@ -39,7 +39,7 @@ For the code-level contract, read [AGENTS.md](../AGENTS.md) next.
 
 ---
 
-## 2. What the product does (as of v0.7.0)
+## 2. What the product does (as of v0.8.0)
 
 Both apps share the same engine, the same 42 settings, the same looks and the same icons (`photoshop/looks.js`). Shared since 0.7.0:
 - **Looks:** Liquid Glass, Clear, Frosted, Glassmorphism, Ice, Smoked, Crystal, Bubble, Film frost, shown as preview cards a page at a time (arrows and dots, no scrollbar). **Save look** keeps your own looks for every document.
@@ -48,7 +48,7 @@ Both apps share the same engine, the same 42 settings, the same looks and the sa
 - A small line icon for every setting.
 - The engine limits how far the lens reaches on wide edges, so a big Edge width no longer hazes the background.
 
-**Illustrator (Windows):** Effect › Stylize › Liquid Glass, in the Appearance panel, with a dark branded settings window (HTML in WebView2). Details in [illustrator/README.md](../illustrator/README.md).
+**Illustrator (Windows and macOS):** a panel (Window › Extensions › Sudo Liquid Glass) with Make Glass, looks and all settings, editing the selected glass live; the glass itself is a Live Effect (Effect › Stylize › Liquid Glass, in the Appearance panel). The Mac build is made by GitHub Actions and not yet tried on a real Mac. Details in [illustrator/README.md](../illustrator/README.md).
 
 **Photoshop:**
 
@@ -235,6 +235,16 @@ The owner confirmed: **"All working"** (v0.5.5).
   - **Mac:** the Photoshop `.ccx` already runs on macOS (untested there). Illustrator for Mac can't be built on Windows: it needs Xcode, the Mac SDK and a WKWebView window. Not started; stated honestly.
   - Published as **v0.7.0** with `installer/Install Illustrator on Windows.bat` (verified: it installed the plug-in after the UAC prompt).
 
+### Phase 14: Illustrator panel and Mac [0.8.0]
+- **"The plugin is not showing for Illustrator; update it like Photoshop; Mac compatible."** The plug-in loaded fine (its log showed clean starts), so the owner was asked what was missing: they wanted a **panel like Photoshop's**. For Mac, they chose **GitHub's Mac machines** with the Mac SDK kept private.
+- **Decision:** the panel is a **CEP extension** (Illustrator's HTML panel format, Window › Extensions). It's the same code on Windows and Mac, ships as a signed `.zxp` (the format the owner first asked for), and replaces the Windows-only WebView2 window, so the C++ plug-in no longer has any platform UI code.
+  - The panel talks to the plug-in with `app.sendScriptMessage("LiquidGlass", state | make | apply | refresh)`; the plug-in edits the selected glass by replacing the effect's parameters in its art style.
+  - **Make Glass** groups several selected objects so they melt together, and sizes edge width and blur to the shape, like Photoshop.
+  - Effect › Stylize › Liquid Glass now applies at once and opens the panel; double-clicking the effect in the Appearance panel opens the panel (PlugPlug `LoadExtension`).
+  - The panel and the Photoshop plugin had the same name in Adobe's installer, and `/remove` by name removed the wrong one in a test: the panel is now "Sudo Liquid Glass for Illustrator".
+- **Mac:** `illustrator/build-mac.sh` builds a universal (Apple Silicon + Intel), ad-hoc signed `LiquidGlass.aip` bundle with the Mac PiPL, and signs the panel on macOS. GitHub Actions runs it; the Mac SDK .dmg is in the **private** repo `CGSudo/illustrator-sdk-private`, read through a read-only deploy key. First runs failed on the SDK folder's spaces and a relative path; the third built cleanly. **Not yet tried on a real Mac.**
+- **Tests:** `illustrator/cep/panel.test.js` runs the panel against a fake plug-in (Make Glass, live edit, loading the selected glass, no document).
+
 ## 4. Fundamentals installed on the dev machine (Windows 11)
 
 | Tool | Why | Notes |
@@ -245,7 +255,7 @@ The owner confirmed: **"All working"** (v0.5.5).
 | GitHub CLI (`gh`, winget `GitHub.cli`) | releases, repo metadata | not logged in itself; gets `GH_TOKEN` from `git credential fill` (never printed) |
 | FFmpeg (winget `Gyan.FFmpeg`) | extracting video frames, converting the logo | optional |
 | Visual Studio 2019 Build Tools (C++) | Illustrator native plugin (v142 toolset) | `illustrator/build.ps1` finds it with vswhere |
-| Microsoft.Web.WebView2 NuGet package (`E:\AI\SDK\webview2\pkg`) | Illustrator settings window | headers + `WebView2LoaderStatic.lib`; runtime is part of Windows 11 |
+| ZXPSignCmd 4.1.3 (`E:\AI\SDK\zxpsign`, from Adobe-CEP/CEP-Resources) | signs the Illustrator panel `.zxp` | a fresh self-signed certificate per build |
 | Adobe Photoshop 2026, Illustrator 2026 | hosts | Photoshop plugin installed via UPIA |
 | Adobe UPIA (`UnifiedPluginInstallerAgent`) | installs `.ccx` from the command line | Windows: `/install`, `/remove`, `/list all`; macOS: `--install` |
 | Illustrator SDK 2026 (owner download, `E:\AI\SDK`) | Illustrator Live Effect | licence forbids committing it |
@@ -275,7 +285,7 @@ Dev loop for Photoshop:
 1. **Real screenshots and demo video:** replace the engine test renders in the README with real Photoshop captures (FocuSee or OBS).
 2. **macOS test:** the same `.ccx`, never run on a Mac.
 3. **Illustrator:**
-   - a Mac build (Xcode, Mac SDK, a WKWebView settings window);
+   - try the Mac build on a real Mac (built by CI, never run);
    - confirm the background notifier and the refusals on more documents;
    - optional: engine-rendered look thumbnails in the Illustrator window (Photoshop has them).
 4. **After Effects / Premiere:** design one AE-SDK effect plugin that reuses `lg_render`.
