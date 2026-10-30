@@ -2,11 +2,11 @@
 
 Sudo Liquid Glass recreates Apple's Liquid Glass material inside Adobe apps. It is live and non-destructive: the glass reads what is behind it and re-renders, and it never merges or flattens layers.
 
-- **Today (v0.7.0):**
+- **Today (v0.8.0):**
   - **Photoshop:** a UXP plugin, Windows and macOS (wasm engine, no platform code; tested on Windows only).
-  - **Illustrator:** a native Live Effect (`.aip`), **Windows only**.
-- **Goal:** the same engine in **Premiere Pro and After Effects**, and Illustrator on Mac. These are plans: never describe them as available.
-- **Packaging:** Photoshop `.ccx` (UXP; ZXP is for CEP extensions and doesn't apply). Illustrator `.aip`, installed by `installer/Install Illustrator on Windows.bat`.
+  - **Illustrator:** a native Live Effect (`.aip`) plus a CEP panel (`.zxp`), Windows and macOS. The Mac build is made by GitHub Actions and hasn't been tried on a real Mac.
+- **Goal:** the same engine in **Premiere Pro and After Effects**. These are plans: never describe them as available.
+- **Packaging:** Photoshop `.ccx` (UXP). Illustrator: `.aip` (plug-in) + `.zxp` (panel, CEP, self-signed per build), installed by `installer/Install Illustrator on Windows.bat` / `.command`.
 
 **New here with zero context?** Read [docs/PROJECT_HISTORY.md](docs/PROJECT_HISTORY.md) first. It explains:
 - the mission and every decision;
@@ -30,9 +30,10 @@ photoshop/logo.png       SUDO logo shown in the panel header and About page
 photoshop/*.test.js      engine.test.js / paths.test.js run the real wasm; ui.test.js loads the panel in jsdom
                          with a fake Photoshop (layer lists are Proxies that behave like Photoshop's)
 preview/src/main.rs      renders preview*.png from a synthetic backdrop (engine test renders, not screenshots)
-illustrator/             native Live Effect: Source/*.cpp (render, notifier, menus, checks), ui/panel.html (settings
-                         window, WebView2), build.ps1, test/run_test.ps1 (settings window without Illustrator)
-installer/               one-click install scripts shipped in the release zip (Photoshop .bat/.command, Illustrator .bat)
+illustrator/             Source/*.cpp: native Live Effect (render, notifier, menus, checks, script messages for the panel)
+                         cep/: the panel (index.html, host.jsx, CSXS/manifest.xml, stage.js, panel.test.js)
+                         build.ps1 (Windows) / build-mac.sh (macOS, run by .github/workflows/illustrator-mac.yml)
+installer/               one-click install scripts shipped in the release zip (Photoshop and Illustrator, .bat and .command)
 install.ps1 / install.sh package photoshop/ → dist/SudoLiquidGlass.ccx and install via Adobe UPIA (Windows / macOS)
 package.json             dev tooling only: `npm install` (jsdom), then `npm test` runs every test
 ```
@@ -71,7 +72,7 @@ To add a parameter:
 1. Append it to the end of the list. Never reorder.
 2. `PARAM_COUNT` follows from the struct size, so leave it alone.
 3. Update `DEFAULTS` in `photoshop/looks.js` (both apps read it).
-4. Update `kParamCount` in `illustrator/Source/LiquidGlassDialog.h`, `kDefaults` in `illustrator/Source/LiquidGlassPlugin.cpp` and `illustrator/test/dialog_test.cpp`, and `kLengths` if the new value is a length (pt → px).
+4. Update `kParamCount` in `illustrator/Source/LiquidGlass.h`, `kDefaults` in `illustrator/Source/LiquidGlassPlugin.cpp`, and `kLengths` if the new value is a length (pt → px).
 5. Update the `param_layout_matches_js` test and the param arrays in `photoshop/engine.test.js`.
 
 `decodeName` pads older saved glasses (16, 21, 25 or 30 values) with the defaults, so existing documents keep working.
@@ -113,6 +114,7 @@ To add a parameter:
 - **Locked layers** reject `putPixels`.
 - **Fill 0 layers** report empty bounds and pixels (see Peek above).
 - **Files written from PowerShell 5.1** with `Set-Content`/`Out-File` get re-encoded: README mojibake, and "◆" turned into "?". Edit text files with the editor tools or Node, never PowerShell.
+- **UPIA removes by name:** two extensions with the same name collide on `/remove`. The Illustrator panel is named "Sudo Liquid Glass for Illustrator" so the Photoshop installer's `/remove "Sudo Liquid Glass"` can't hit it.
 - **Help text:** the panel shows plain-language help on hover. Every slider row needs a help string (`ui.test.js` checks it).
 
 ## Commands (run all before you commit)
@@ -139,20 +141,20 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -NoInstall
   1. Bump `version` in `photoshop/manifest.json` (no BOM).
   2. Run `npm test`.
   3. Package with `install.ps1 -NoInstall`.
-  4. Build the Illustrator plug-in: `powershell -ExecutionPolicy Bypass -File illustrator/build.ps1 -NoInstall`, and copy `illustrator/build/LiquidGlass.aip` to `dist/`.
-  5. Commit, then build the one-click zip. It holds the `.ccx`, the `.aip` and `installer/` (the .bat files, the Mac .command with its exec bit, and READ ME); `HEAD:installer` flattens the folder:
-     `git archive --format=zip --prefix=SudoLiquidGlass-<ver>/ --add-file=dist/SudoLiquidGlass.ccx --add-file=dist/LiquidGlass.aip -o dist/SudoLiquidGlass-<ver>-installer.zip HEAD:installer`
-  6. Push, then attach the `.ccx` and the installer zip to a GitHub release.
+  4. Bump `kVersion` in `illustrator/Source/LiquidGlass.h` and the two versions in `illustrator/cep/CSXS/manifest.xml` (`stage.js` refuses a mismatch). Build: `powershell -ExecutionPolicy Bypass -File illustrator/build.ps1 -NoInstall`.
+  5. Commit, push a `v<ver>` tag: GitHub Actions builds the Mac plug-in and panel and attaches `LiquidGlass-mac.aip.zip` and `SudoLiquidGlassPanel-mac.zxp` to the release.
+  6. Build the one-click zip with the Windows files and the Mac files from that release, and attach it with the `.ccx`. `installer/` holds the scripts and READ ME (see the release notes of v0.8.0 for the file list).
 - Be honest in public text: say "tested on Windows", and label engine renders as test renders, not Photoshop screenshots.
 
 ## Roadmap for other hosts (all reuse `lg_render`)
-- **Illustrator (Windows, shipped):** see [illustrator/README.md](illustrator/README.md).
+- **Illustrator (Windows and macOS, shipped):** see [illustrator/README.md](illustrator/README.md).
   - Rasterizes the art below the shape (`srcArt`) and the shape, calls `lg_render` (glass_core as a staticlib), returns the rasters.
   - A document-changed notifier re-runs a glass when the art below it changes (newest edit time + item count of that art).
-  - Settings window = `illustrator/ui/panel.html` in WebView2; `build.ps1` inlines `photoshop/looks.js` and the logo.
+  - The panel (CEP) calls `app.sendScriptMessage("LiquidGlass", state | make | apply | refresh, …)`; the plug-in answers in `Script()`. Live edits replace the effect's parameters in the art style (`SetLiveEffectParams` + `SetArtStyle`).
   - Lengths are stored in **pt** and converted to px (2 px per pt, capped at 4 MP) at render: `kLengths` lists them.
-  - Tried and removed: a toolbar tool and Alt + double-click (did not work for the owner in Illustrator 2026).
-  - **Mac:** needs an Xcode build on a Mac, the Mac SDK and a WKWebView settings window. Not started.
+  - The plug-in has no platform UI code; only the log path differs (`WIN_ENV`).
+  - **Mac builds:** `illustrator/build-mac.sh` on GitHub's macOS runners. The Mac SDK .dmg lives in the private repo `CGSudo/illustrator-sdk-private`, read through a read-only deploy key (secret `ILLUSTRATOR_SDK_KEY`, variable `ILLUSTRATOR_SDK_REPO`). Never make that repo public.
+  - Tried and removed: a WebView2 settings window (0.7.0), a toolbar tool and Alt + double-click.
 - **After Effects and Premiere Pro:** one effect plugin built with the After Effects SDK runs in both apps, because Premiere hosts AE effect plugins.
   - Backdrop: the layer's input.
   - Mask: the layer's alpha.

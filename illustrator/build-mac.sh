@@ -4,7 +4,7 @@
 # Output: dist/mac/LiquidGlass.aip (a bundle) and dist/mac/SudoLiquidGlassPanel.zxp.
 # Needs Xcode command line tools, Rust (targets aarch64-apple-darwin + x86_64-apple-darwin), Node and Python 3.
 set -eu
-SDK="$1"
+SDK="$(cd "$1" && pwd)"
 SIGN="${2:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
